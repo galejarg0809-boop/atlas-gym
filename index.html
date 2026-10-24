@@ -296,6 +296,7 @@ p{margin:0}
 .chat-in button{width:auto;padding:0 16px;height:46px}
 .vacio{color:var(--muted);text-align:center;padding:18px 8px;font-size:14px}
 .toast{position:fixed;left:50%;transform:translateX(-50%);top:calc(env(safe-area-inset-top,0px) + 14px);background:var(--fg);color:#000;font-weight:700;padding:10px 16px;border-radius:12px;z-index:60;font-size:14px;max-width:calc(100% - 32px)}
+input,select,textarea{font-size:16px!important}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
 
@@ -313,7 +314,8 @@ p{margin:0}
 // ---------- Utilidades ----------
 const $ = (s, r = document) => r.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const num = v => { const n = parseFloat(String(v ?? '').replace(',', '.')); return isFinite(n) ? n : null; };
+const num = v => { const t = String(v ?? '').trim().replace(',', '.'); return /^-?\d+(\.\d+)?$/.test(t) ? parseFloat(t) : null; };
+const LIM = { edad: [12, 90], peso: [30, 250], altura: [120, 230] };
 const fmt = (n, d = 1) => n == null ? '' : (Math.round(n * 10 ** d) / 10 ** d).toString().replace('.', ',');
 const fmtMiles = n => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -503,13 +505,9 @@ const ROMANO = ['III', 'II', 'I'];
 const multSexo = (m, sexo) => sexo === 'mujer' ? (INFERIOR.has(m) ? 0.78 : 0.6) : 1;
 const e1rm = (kg, reps) => kg * (1 + Math.min(reps, 20) / 30);
 function pesoCorporal() { const p = S.pesos?.length ? S.pesos[S.pesos.length - 1].kg : null; return p || S.perfil?.peso || 70; }
-function puntuacion(ex, kg, reps) {
-  const bw = pesoCorporal(), mult = multSexo(ex.m, S.perfil?.sexo);
-  if (CORPORAL(ex.t)) {
-    const total = bw + (kg || 0);
-    const repsEq = 30 * (e1rm(total, reps) / bw - 1);
-    return repsEq / (ex.el * mult);
-  }
+function puntuacion(ex, kg, reps, bw = pesoCorporal()) {
+  const mult = multSexo(ex.m, S.perfil?.sexo);
+  if (CORPORAL(ex.t)) return reps * (bw + (kg || 0)) / bw / (ex.el * mult); // repeticiones, con el lastre sumado al peso
   return e1rm(kg, reps) / (ex.el * bw * mult);
 }
 const tDe = s => Math.min(20.999, clamp(s, 0, 1) * 21);
@@ -521,7 +519,7 @@ function mejoresPorEjercicio(entrenos = S.entrenos) {
     const ex = EJ[x.id]; if (!ex) continue;
     for (const s of x.series) {
       if (!s.hecho || !(s.reps > 0)) continue;
-      const p = puntuacion(ex, s.kg || 0, s.reps);
+      const p = puntuacion(ex, s.kg || 0, s.reps, e.bw || pesoCorporal());
       if (!mej[x.id] || p > mej[x.id].p) mej[x.id] = { p, kg: s.kg || 0, reps: s.reps, fecha: e.fecha };
     }
   }
@@ -562,43 +560,64 @@ function emblema(t, extra = '') {
 }
 
 // ---------- Estado y guardado ----------
+// Primero se guarda en el móvil (localStorage) y después en la cuenta. Cada cambio sube `rev`;
+// al conectar gana la copia con el `rev` más alto, y los entrenos y las fotos se juntan por id
+// (lo borrado se recuerda en `borrados` para que no vuelva). `gen` invalida lo pendiente al borrar todo.
 const LS = 'atlas-gym-v1';
-function estadoVacio() { return { perfil: null, plan: null, entrenos: [], pesos: [], fotos: [], escaneo: null, activo: null, demo: false, ob: { paso: 0, slide: 0 } }; }
+function estadoVacio() { return { perfil: null, plan: null, entrenos: [], pesos: [], fotos: [], escaneo: null, activo: null, demo: false, ob: { paso: 0, slide: 0 }, rev: 0, borrados: [], uid: null }; }
 let S = estadoVacio();
 try { const g = JSON.parse(localStorage.getItem(LS) || 'null'); if (g) S = { ...S, ...g }; } catch (e) { }
+function activoValido() {
+  const a = S.activo;
+  if (a && !(Array.isArray(a.ejercicios) && a.ejercicios.length && a.ejercicios.every(x => EJ[x.id] && Array.isArray(x.series)))) S.activo = null;
+  if (S.activo) S.activo.idx = clamp(S.activo.idx | 0, 0, S.activo.ejercicios.length - 1);
+}
+activoValido();
 let vista = 'inicio';
 try { vista = localStorage.getItem(LS + '-vista') || 'inicio'; } catch (e) { }
 let entrenoAbierto = !!S.activo;
+// Si estos datos son de una cuenta, no se enseñan hasta saber quién abre la página
+let esperandoCuenta = !!(S.uid && window.claude?.use);
 
 let nube = { db: null, ref: null, estado: 'local' }; // local | conectando | nube
+let avisoLocal = false, avisoNube = false;
 function guardarLocal() {
-  try { localStorage.setItem(LS, JSON.stringify(S)); }
-  catch (e) { try { localStorage.setItem(LS, JSON.stringify({ ...S, fotos: [] })); } catch (e2) { } }
+  try { localStorage.setItem(LS, JSON.stringify(S)); return; } catch (e) { }
+  try {
+    localStorage.setItem(LS, JSON.stringify({ ...S, fotos: [] }));
+    if (!avisoLocal) { avisoLocal = true; toast(nube.ref ? 'Las fotos ya no caben en este móvil: quedan guardadas en tu cuenta.' : 'Las fotos ya no caben en este móvil: borra alguna o se perderán al cerrar.'); }
+  } catch (e2) { if (!avisoLocal) { avisoLocal = true; toast('No se ha podido guardar en este móvil: no cierres la app hasta liberar espacio.'); } }
 }
-let tGuardar = null, colaPerfil = Promise.resolve();
-const cuerpoPerfil = () => JSON.parse(JSON.stringify({ perfil: S.perfil, plan: S.plan, pesos: S.pesos, escaneo: S.escaneo, activo: S.activo, ob: S.ob, v: 1 }));
+let tGuardar = null, colaNube = Promise.resolve(), gen = 0;
+const cuerpoPerfil = () => JSON.parse(JSON.stringify({ perfil: S.perfil, plan: S.plan, pesos: S.pesos, escaneo: S.escaneo, activo: S.activo, ob: S.ob, rev: S.rev, borrados: S.borrados, v: 2 }));
 // Quien abre el enlace sin permiso para escribir en la cuenta (visitantes de fuera) guarda solo en su navegador
 function fallo(e) {
   console.warn('No se pudo guardar en la cuenta', e);
-  if (['invalid_argument', 'not_granted', 'revoked', 'capability_disabled'].includes(e?.code) && nube.ref) { nube.ref = null; nube.estado = 'local'; if (vista === 'perfil' && !entrenoAbierto) pintar(); }
+  if (['invalid_argument', 'not_granted', 'revoked', 'capability_disabled', 'capability_removed'].includes(e?.code)) {
+    if (nube.ref) { nube.ref = null; nube.estado = 'local'; if (vista === 'perfil' && !entrenoAbierto) pintar(); }
+  } else if (!avisoNube) { avisoNube = true; toast('No se ha podido guardar en tu cuenta. Queda en este móvil y se subirá la próxima vez que abras la app.'); }
 }
+// Todo lo que va a la cuenta pasa en orden por la misma cola
+function enCola(fn) { const g = gen; colaNube = colaNube.then(() => g === gen && nube.ref ? fn(nube.ref) : null).catch(fallo); }
+function subirPerfil() { tGuardar = null; const cuerpo = cuerpoPerfil(); enCola(ref => ref.set(cuerpo)); }
 function guardar() {
-  guardarLocal();
+  S.rev = Date.now(); guardarLocal();
   if (!nube.ref || S.demo) return;
-  clearTimeout(tGuardar);
-  tGuardar = setTimeout(() => {
-    const cuerpo = cuerpoPerfil();
-    colaPerfil = colaPerfil.then(() => nube.ref?.set(cuerpo)).catch(fallo);
-  }, 700);
+  clearTimeout(tGuardar); tGuardar = setTimeout(subirPerfil, 700);
 }
-function guardarEntreno(e) { guardarLocal(); if (nube.ref && !S.demo) nube.ref.collection('entrenos').doc(e.id).set(JSON.parse(JSON.stringify(e))).catch(fallo); }
-function borrarEntrenoNube(id) { if (nube.ref && !S.demo) nube.ref.collection('entrenos').doc(id).delete().catch(err => console.warn(err)); }
-function guardarFoto(f) { guardarLocal(); if (nube.ref && !S.demo) nube.ref.collection('fotos').doc(f.id).set(f).catch(fallo); }
-function borrarFotoNube(id) { if (nube.ref && !S.demo) nube.ref.collection('fotos').doc(id).delete().catch(err => console.warn(err)); }
+// Al bloquear el móvil o cambiar de app, lo pendiente sale en el acto
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && tGuardar) { clearTimeout(tGuardar); subirPerfil(); } });
+function subirDoc(col, x) { if (!nube.ref || S.demo) return; const cuerpo = JSON.parse(JSON.stringify(x)); enCola(ref => ref.collection(col).doc(x.id).set(cuerpo)); }
+function borrarDoc(col, id) { if (!nube.ref || S.demo) return; enCola(ref => ref.collection(col).doc(id).delete()); }
+function guardarEntreno(e) { S.rev = Date.now(); guardarLocal(); subirDoc('entrenos', e); }
+function guardarFoto(f) { S.rev = Date.now(); guardarLocal(); subirDoc('fotos', f); }
+function borrarEntreno(id) { S.entrenos = S.entrenos.filter(x => x.id !== id); S.borrados = [...(S.borrados || []), 'e:' + id].slice(-500); borrarDoc('entrenos', id); guardar(); }
+function borrarFoto(id) { S.fotos = S.fotos.filter(x => x.id !== id); S.borrados = [...(S.borrados || []), 'f:' + id].slice(-500); borrarDoc('fotos', id); guardar(); }
 
 async function usar(nombre) { try { return window.claude?.use ? await window.claude.use(nombre) : null; } catch (e) { return null; } }
 let IA = null, IA_FOTOS = false;
 async function conectar() {
+  const g = gen;
   nube.estado = 'conectando';
   const [db, user, sample] = await Promise.all([usar('db'), usar('user'), usar('sample')]);
   IA = sample;
@@ -606,23 +625,39 @@ async function conectar() {
   if (db && user) {
     try {
       const uid = await user.id();
-      if (uid) {
-        nube.db = db; nube.ref = db.doc(`data/users/${uid}/perfil`);
-        const [snap, ents, fotos] = await Promise.all([nube.ref.get(), nube.ref.collection('entrenos').get(), nube.ref.collection('fotos').get()]);
-        if (snap.exists && snap.data()?.perfil && !S.demo) {
-          const d = JSON.parse(JSON.stringify(snap.data()));
-          S = { ...S, ...d, entrenos: ents.docs.map(x => JSON.parse(JSON.stringify(x.data()))).sort((a, b) => a.fecha.localeCompare(b.fecha) || a.inicio - b.inicio), fotos: fotos.docs.map(x => ({ ...x.data() })).sort((a, b) => a.fecha.localeCompare(b.fecha)), demo: false };
+      if (uid && g === gen) {
+        const ref = db.doc(`data/users/${uid}/perfil`);
+        const [snap, ents, fotos] = await Promise.all([ref.get(), ref.collection('entrenos').get(), ref.collection('fotos').get()]);
+        if (g !== gen) return; // se borró todo mientras tanto
+        if (S.uid && S.uid !== uid) S = estadoVacio(); // lo guardado en este navegador es de otra cuenta: ni se enseña ni se mezcla
+        if (!S.demo) {
+          const d = snap.exists ? JSON.parse(JSON.stringify(snap.data())) : null;
+          const borr = new Set([...(d?.borrados || []), ...(S.borrados || [])]);
+          const remE = ents.docs.map(x => JSON.parse(JSON.stringify(x.data()))), remF = fotos.docs.map(x => ({ ...x.data() }));
+          const juntar = (rem, loc, pre) => { const m = new Map(); for (const x of rem) m.set(x.id, x); for (const x of loc) if (!m.has(x.id)) m.set(x.id, x); return [...m.values()].filter(x => !borr.has(pre + x.id)); };
+          const usarLocal = !!S.perfil && (!d?.perfil || (S.rev || 0) > (d.rev || 0));
+          S = {
+            ...S, ...(usarLocal || !d?.perfil ? {} : d), uid, demo: false, borrados: [...borr].slice(-500),
+            entrenos: juntar(remE, S.entrenos, 'e:').sort((a, b) => a.fecha.localeCompare(b.fecha) || (a.inicio || 0) - (b.inicio || 0)),
+            fotos: juntar(remF, S.fotos, 'f:').sort((a, b) => a.fecha.localeCompare(b.fecha)),
+          };
+          if (S.activo && S.entrenos.some(e => e.id === S.activo.id)) S.activo = null; // ya estaba terminado
+          activoValido();
           entrenoAbierto = entrenoAbierto && !!S.activo;
           guardarLocal();
-        } else if (!S.demo) {
-          await nube.ref.set(cuerpoPerfil()); // si no deja escribir, salta al catch y se queda en el navegador
-          for (const e of S.entrenos) guardarEntreno(e); for (const f of S.fotos) guardarFoto(f);
-        }
+          if (usarLocal || !d?.perfil) await ref.set(cuerpoPerfil()); // si no deja escribir, salta al catch y se queda en el navegador
+          nube.db = db; nube.ref = ref;
+          const idsE = new Set(remE.map(x => x.id)), idsF = new Set(remF.map(x => x.id));
+          for (const e of S.entrenos) if (!idsE.has(e.id)) subirDoc('entrenos', e);
+          for (const f of S.fotos) if (!idsF.has(f.id)) subirDoc('fotos', f);
+          for (const b of borr) { const id = b.slice(2); if (b[0] === 'e' && idsE.has(id)) borrarDoc('entrenos', id); if (b[0] === 'f' && idsF.has(id)) borrarDoc('fotos', id); }
+        } else { nube.db = db; nube.ref = ref; }
         nube.estado = 'nube';
       }
     } catch (e) { console.warn('Sin guardado en la cuenta', e); nube.ref = null; nube.estado = 'local'; }
   }
   if (nube.estado !== 'nube') nube.estado = 'local';
+  esperandoCuenta = false;
   pintar();
 }
 
@@ -738,7 +773,7 @@ Responde solo con JSON con esta forma:
     });
     return { nombre: String(d.nombre || 'Día').slice(0, 40), ejercicios: ej };
   }).filter(d => d.ejercicios.length >= 3);
-  if (dias.length < Math.min(2, p.dias)) return null;
+  if (dias.length !== p.dias) return null; // si faltan días, mejor el plan propio
   return { nombre: String(r.nombre || 'Tu plan').slice(0, 60), nota: String(r.nota || '').slice(0, 400), dias, fuente: 'ia' };
 }
 
@@ -752,13 +787,15 @@ function ultimaVez(id, antesDe) {
   }
   return null;
 }
-function sugerir(id, obj) {
+function sugerir(id, obj, n = 3) {
   const ex = EJ[id], rmin = obj?.repMin || 8, rmax = obj?.repMax || 12;
   const u = ultimaVez(id);
+  const completas = u && u.series.length >= n;
   if (CORPORAL(ex.t)) {
     if (!u) return { kg: null, reps: rmin, motivo: 'Primera vez: haz las que puedas con buena técnica y apúntalas.' };
     const mx = Math.max(...u.series.map(s => s.reps || 0));
-    if (u.series.every(s => s.reps >= rmax)) return { kg: null, reps: mx + 1, motivo: `Llegaste a ${rmax} en todas: añade una repetición más o métele un poco de lastre.` };
+    if (completas && u.series.every(s => s.reps >= rmax)) return { kg: null, reps: mx + 1, motivo: `Hiciste las ${u.series.length} series llegando a ${rmax}: añade una repetición más o métele un poco de lastre.` };
+    if (!completas) return { kg: null, reps: Math.min(rmax, mx), motivo: `La última vez hiciste ${u.series.length} de ${n} series: complétalas antes de buscar más repeticiones.` };
     return { kg: null, reps: Math.min(rmax, mx + 1), motivo: `Intenta ${Math.min(rmax, mx + 1)} repeticiones en cada serie.` };
   }
   const inc = INC[ex.t] || 2.5;
@@ -768,10 +805,12 @@ function sugerir(id, obj) {
     return { kg, reps: rmin, estimado: true, motivo: 'Primera vez: peso estimado por tu nivel y tu peso. Si te sobran más de 3 repeticiones, sube; si no llegas, baja.' };
   }
   const top = Math.max(...u.series.map(s => s.kg || 0)), enTop = u.series.filter(s => (s.kg || 0) === top);
-  if (enTop.every(s => s.reps >= rmax)) return { kg: +(top + inc).toFixed(2), reps: rmin, motivo: `Llegaste a ${rmax} repeticiones en todas con ${fmt(top)} kg: toca subir ${fmt(inc)} kg.` };
+  if (completas && enTop.length === u.series.length && enTop.every(s => s.reps >= rmax)) return { kg: +(top + inc).toFixed(2), reps: rmin, motivo: `Hiciste las ${u.series.length} series con ${fmt(top)} kg llegando a ${rmax}: toca subir ${fmt(inc)} kg.` };
   const bajo = enTop.filter(s => s.reps < rmin).length;
-  if (bajo >= Math.ceil(enTop.length / 2) && top - inc > 0) return { kg: +(top - inc).toFixed(2), reps: rmin, motivo: `Con ${fmt(top)} kg te quedaste por debajo de ${rmin} en la mitad de las series: baja un poco y vuelve a subir.` };
+  if (bajo >= Math.ceil(enTop.length / 2) && top - inc > 0) return { kg: +(top - inc).toFixed(2), reps: rmin, motivo: `Con ${fmt(top)} kg te quedaste por debajo de ${rmin} en ${bajo} de ${enTop.length} series: baja un poco y vuelve a subir.` };
   const minR = Math.min(...enTop.map(s => s.reps || 0)), obj2 = clamp(minR + 1, rmin, rmax);
+  if (!completas) return { kg: top, reps: Math.max(rmin, Math.min(rmax, minR)), motivo: `La última vez hiciste ${u.series.length} de ${n} series: repite ${fmt(top)} kg y complétalas antes de subir.` };
+  if (enTop.length < u.series.length) return { kg: top, reps: obj2, motivo: `Algunas series las hiciste con menos peso: intenta hacerlas todas con ${fmt(top)} kg, buscando ${obj2} repeticiones.` };
   return { kg: top, reps: obj2, motivo: `Mismo peso que la última vez (${fmt(top)} kg): busca ${obj2} repeticiones en todas antes de subir.` };
 }
 
@@ -783,6 +822,7 @@ function proximoDia() {
 }
 function empezar(diaIdx) {
   const d = S.plan.dias[diaIdx];
+  if (!d?.ejercicios.length) { toast('Este día no tiene ejercicios: añádelos en Perfil'); return; }
   S.activo = {
     id: nuevoId(), inicio: Date.now(), diaIdx, nombre: d.nombre, idx: 0, rec: {},
     ejercicios: d.ejercicios.map(x => ({ id: x.id, obj: { repMin: x.repMin, repMax: x.repMax }, descanso: x.descanso || 90, nota: '', series: Array.from({ length: x.series }, () => ({ kg: '', reps: '', hecho: false })) })),
@@ -795,6 +835,7 @@ function ejActual() { return S.activo.ejercicios[S.activo.idx]; }
 // ---------- Pintado ----------
 const app = $('#app');
 function pintar() {
+  if (esperandoCuenta) { app.innerHTML = '<p class="vacio" style="padding-top:40vh">Cargando…</p>'; return; }
   if (!S.perfil || !S.plan || S.ob.paso < 99) { app.innerHTML = vistaOnboarding(); montarOnboarding(); return; }
   let h = '';
   if (vista === 'inicio') h = vistaInicio();
@@ -993,7 +1034,7 @@ function volumen(e) {
 // ---------- Vista del entreno ----------
 function vistaEntreno() {
   const a = S.activo, x = ejActual(), ex = EJ[x.id];
-  const sug = sugerir(x.id, x.obj);
+  const sug = sugerir(x.id, x.obj, x.series.length);
   const u = ultimaVez(x.id);
   const hechas = s => s.series.some(y => y.hecho) && s.series.every(y => y.hecho);
   const rest = a.descansoFin ? Math.max(0, (a.descansoFin - Date.now()) / 1000) : 0;
@@ -1035,12 +1076,12 @@ setInterval(() => {
 function finalizar(descartar) {
   const a = S.activo;
   const antes = rangosMusculo();
-  const ejercicios = a.ejercicios.map(x => ({ id: x.id, nota: x.nota, series: x.series.filter(s => s.hecho).map(s => ({ kg: num(s.kg) || 0, reps: Math.round(num(s.reps) || 0), hecho: true })) })).filter(x => x.series.length);
+  const ejercicios = a.ejercicios.map(x => ({ id: x.id, nota: x.nota, series: x.series.filter(s => s.hecho && num(s.reps) > 0).map(s => ({ kg: num(s.kg) || 0, reps: Math.round(num(s.reps) || 0), hecho: true })) })).filter(x => x.series.length);
   S.activo = null; entrenoAbierto = false;
   if (descartar || !ejercicios.length) { guardar(); pintar(); toast('Entreno descartado'); return; }
   const mejAntes = mejoresPorEjercicio();
-  const e = { id: a.id, fecha: hoyISO(new Date(a.inicio)), inicio: a.inicio, duracion: Math.round((Date.now() - a.inicio) / 1000), diaIdx: a.diaIdx, nombre: a.nombre, ejercicios };
-  S.entrenos.push(e); guardar(); guardarEntreno(e);
+  const e = { id: a.id, fecha: hoyISO(new Date(a.inicio)), inicio: a.inicio, duracion: Math.round((Date.now() - a.inicio) / 1000), diaIdx: a.diaIdx, nombre: a.nombre, bw: pesoCorporal(), ejercicios };
+  S.entrenos.push(e); guardarEntreno(e); guardar();
   const despues = rangosMusculo(), mejDesp = mejoresPorEjercicio();
   const records = Object.keys(mejDesp).filter(id => ejercicios.some(x => x.id === id) && (!mejAntes[id] || mejDesp[id].p > mejAntes[id].p + 1e-9) && mejAntes[id]);
   const subidas = Object.keys(MUSC).filter(m => despues[m] && (!antes[m] || Math.floor(despues[m].t) > Math.floor(antes[m].t)));
@@ -1068,7 +1109,7 @@ function vistaRangos() {
     <section><div class="etq" style="margin-bottom:4px">Por músculo</div><div class="lista">
       ${Object.keys(MUSC).sort((a, b) => (r[b]?.t ?? -1) - (r[a]?.t ?? -1)).map(m => `<button class="musculo-fila" data-a="musculo" data-m="${m}">${emblema(r[m]?.t ?? null)}<span><span class="t">${MUSC[m]}</span><div class="prog"><i style="width:${r[m] ? (r[m].t % 1) * 100 : 0}%;background:${colorRango(r[m]?.t)}"></i></div></span><span class="pill" style="color:${r[m] ? colorRango(r[m].t) : 'var(--muted)'}">${nombreRango(r[m]?.t)}</span></button>`).join('')}
     </div></section>
-    <p class="sub">El rango compara tu mejor serie de cada ejercicio (fuerza estimada con la fórmula de Epley) con tu peso corporal y con un nivel de élite para ese ejercicio. Cada músculo toma la media de sus dos mejores ejercicios.</p>
+    <p class="sub">El rango compara tu mejor serie de cada ejercicio (fuerza estimada con la fórmula de Epley; en los de peso corporal, las repeticiones) con tu peso corporal de ese día y con un nivel de élite para ese ejercicio. Cada músculo toma la media de sus dos mejores ejercicios.</p>
   </div>`;
 }
 function hojaMusculo(m) {
@@ -1253,7 +1294,7 @@ function hojaSelector(modo, ctx) {
 }
 
 // ---------- Entrenador (chat) ----------
-let chat = [];
+let chat = [], enviando = false;
 function contextoEntrenador() {
   const p = S.perfil, r = rangosMusculo();
   const ult = S.entrenos.slice(-6).map(e => `${e.fecha} ${e.nombre}: ` + e.ejercicios.map(x => `${EJ[x.id].n} ${x.series.map(s => (s.kg ? s.kg + 'kg×' : '') + s.reps).join(',')}`).join('; ')).join('\n');
@@ -1274,7 +1315,9 @@ function hojaChat() {
   $('#chat-texto')?.focus();
 }
 async function enviarChat(texto) {
+  if (enviando) return; enviando = true;
   chat.push({ role: 'user', content: texto }); hojaChat();
+  const btn = $('#chat-form button'); if (btn) btn.disabled = true;
   const b = $('#burbujas'), burb = document.createElement('div'); burb.className = 'burbuja el'; burb.textContent = 'Pensando…'; b.append(burb); b.scrollTop = b.scrollHeight;
   try {
     const turnos = [{ role: 'user', content: contextoEntrenador() }, ...chat.slice(-10)];
@@ -1283,7 +1326,7 @@ async function enviarChat(texto) {
   } catch (e) {
     burb.textContent = e?.text || ({ not_granted: 'No has dado permiso a la app para usar Claude.', rate_limited: 'Has llegado al límite de uso. Prueba más tarde.' }[e?.code] || 'No ha salido. Prueba otra vez.');
     chat.pop();
-  }
+  } finally { enviando = false; const b2 = $('#chat-form button'); if (b2) b2.disabled = false; }
 }
 
 // ---------- Hoja inferior y avisos ----------
@@ -1318,7 +1361,7 @@ function cargarDemo() {
   for (let w = 0; w < 6; w++) for (let j = 0; j < 4; j++) {
     const fecha = sumarDias(inicio, w * 7 + offs[j]); if (fecha > hoyISO()) continue;
     const di = k % 4, d = S.plan.dias[di], prog = 1 + w * 0.025;
-    const e = { id: 'demo' + k, fecha, inicio: new Date(fecha + 'T18:30:00').getTime(), duracion: 3300 + Math.round(azar() * 900), diaIdx: di, nombre: d.nombre, ejercicios: [] };
+    const e = { id: 'demo' + k, fecha, bw: p.peso, inicio: new Date(fecha + 'T18:30:00').getTime(), duracion: 3300 + Math.round(azar() * 900), diaIdx: di, nombre: d.nombre, ejercicios: [] };
     for (const x of d.ejercicios) {
       const ex = EJ[x.id], f = fuerza[ex.m] * prog * 0.8;
       const series = Array.from({ length: x.series }, (_, i) => {
@@ -1330,7 +1373,7 @@ function cargarDemo() {
     }
     S.entrenos.push(e); k++;
   }
-  S.pesos = Array.from({ length: 7 }, (_, i) => ({ fecha: sumarDias(inicio, i * 7), kg: +(74 + i * 0.2 + (azar() - 0.5) * 0.4).toFixed(1) }));
+  S.pesos = Array.from({ length: 7 }, (_, i) => ({ fecha: sumarDias(inicio, i * 7), kg: +(74 + i * 0.2 + (azar() - 0.5) * 0.4).toFixed(1) })).filter(x => x.fecha <= hoyISO());
   S.ob = { paso: 99 }; vista = 'inicio';
   guardarLocal(); pintar();
 }
@@ -1352,11 +1395,11 @@ document.addEventListener('click', async e => {
     }
     case 'ob-atras': if (PASOS[S.ob.paso] === 'relato' && S.ob.slide > 0) S.ob.slide--; else S.ob.paso = Math.max(0, S.ob.paso - 1); break;
     case 'ob-set': borradorPerfil()[d.k] = /^\d+$/.test(d.v) ? +d.v : d.v; break;
-    case 'ob-mas': { const pp = borradorPerfil(); pp[d.k] = Math.round((+pp[d.k] + +d.d) * 10) / 10; break; }
+    case 'ob-mas': { const pp = borradorPerfil(), [lo, hi] = LIM[d.k]; pp[d.k] = clamp(Math.round((+pp[d.k] + +d.d) * 10) / 10, lo, hi); break; }
     case 'ob-eq': { const l = borradorPerfil().equipo, i = l.indexOf(d.id); i >= 0 ? l.splice(i, 1) : l.push(d.id); break; }
     case 'ob-grupo': { const pp = borradorPerfil(), ids = EQUIPO[d.g].map(x => x[0]), todos = ids.every(id => pp.equipo.includes(id)); pp.equipo = todos ? pp.equipo.filter(x => !ids.includes(x)) : [...new Set([...pp.equipo, ...ids])]; break; }
     case 'demo': cargarDemo(); return;
-    case 'salir-demo': S = estadoVacio(); chat = []; guardarLocal(); pintar(); conectar(); return;
+    case 'salir-demo': { const uid = S.uid; S = estadoVacio(); S.uid = uid; chat = []; guardarLocal(); pintar(); conectar(); return; }
     case 'tab': vista = d.v; try { localStorage.setItem(LS + '-vista', vista); } catch (er) { } window.scrollTo(0, 0); break;
     case 'empezar': if (!S.activo) empezar(+d.d); return;
     case 'abrir-entreno': entrenoAbierto = true; break;
@@ -1365,16 +1408,16 @@ document.addEventListener('click', async e => {
     case 'hecho': {
       const x = ejActual(), s = x.series[+d.s];
       if (s.hecho) { s.hecho = false; guardar(); break; }
-      const sug = sugerir(x.id, x.obj);
-      if (s.kg === '' || s.kg == null) s.kg = sug.kg ?? 0;
-      if (s.reps === '' || s.reps == null) s.reps = sug.reps;
-      s.kg = num(s.kg) ?? 0; s.reps = Math.round(num(s.reps) ?? 0);
-      s.hecho = true;
+      const sug = sugerir(x.id, x.obj, x.series.length);
+      const kg = s.kg === '' || s.kg == null ? (sug.kg ?? 0) : num(s.kg), reps = s.reps === '' || s.reps == null ? sug.reps : num(s.reps);
+      if (kg == null || kg < 0 || kg > 1000) { toast(`Revisa los kilos de la serie ${+d.s + 1}`); return; }
+      if (reps == null || reps < 1 || reps > 200 || reps % 1) { toast(`Pon cuántas repeticiones hiciste en la serie ${+d.s + 1}`); return; }
+      s.kg = kg; s.reps = reps; s.hecho = true;
       const pendientes = x.series.some(y => !y.hecho);
       if (pendientes || S.activo.idx < S.activo.ejercicios.length - 1) iniciarDescanso(x.descanso); else { guardar(); pintar(); }
       return;
     }
-    case 'chispa': { const x = ejActual(), sug = sugerir(x.id, x.obj); for (const s of x.series) if (!s.hecho) { s.kg = sug.kg ?? ''; s.reps = sug.reps; } S.activo.rec[x.id] = 1; guardar(); break; }
+    case 'chispa': { const x = ejActual(), sug = sugerir(x.id, x.obj, x.series.length); for (const s of x.series) if (!s.hecho) { s.kg = sug.kg ?? ''; s.reps = sug.reps; } S.activo.rec[x.id] = 1; guardar(); break; }
     case 'mas-serie': { const x = ejActual(), u = x.series[x.series.length - 1]; x.series.push({ kg: u?.kg ?? '', reps: u?.reps ?? '', hecho: false }); guardar(); break; }
     case 'menos-serie': ejActual().series.pop(); guardar(); break;
     case 'descanso-ya': iniciarDescanso(ejActual().descanso); return;
@@ -1402,10 +1445,10 @@ document.addEventListener('click', async e => {
     case 'peso': { const v = num($('#peso-nuevo').value); if (!v || v < 30 || v > 250) { toast('Escribe tu peso en kg, entre 30 y 250'); return; } const hoy = hoyISO(); S.pesos = (S.pesos || []).filter(x => x.fecha !== hoy); S.pesos.push({ fecha: hoy, kg: v }); S.pesos.sort((a1, b1) => a1.fecha.localeCompare(b1.fecha)); guardar(); toast('Peso apuntado'); break; }
     case 'ver-foto': { const f = S.fotos.find(x => x.id === d.id); hoja(`<h3>${fechaCorta(f.fecha)}</h3><img src="${f.src}" alt="" style="border-radius:14px;width:100%"><div id="borrar-foto-zona"><button class="btn btn-gris" data-a="borrar-foto" data-id="${f.id}" style="color:var(--bad)">Borrar foto</button></div><button class="btn btn-gris" data-a="cerrar">Cerrar</button>`); return; }
     case 'borrar-foto': $('#borrar-foto-zona').innerHTML = `<p class="sub">¿Seguro? No se puede deshacer.</p><div class="fila" style="margin-top:8px"><button class="btn btn-gris" data-a="cerrar">No</button><button class="btn btn-blanco" data-a="borrar-foto-si" data-id="${d.id}">Sí, borrar</button></div>`; return;
-    case 'borrar-foto-si': S.fotos = S.fotos.filter(x => x.id !== d.id); borrarFotoNube(d.id); guardarLocal(); cerrarHoja(); break;
+    case 'borrar-foto-si': borrarFoto(d.id); cerrarHoja(); break;
     case 'ver-entreno': hojaEntreno(d.id); return;
     case 'borrar-entreno': $('#borrar-zona').innerHTML = `<p class="sub">¿Seguro? Se borra del historial y de los rangos.</p><div class="fila" style="margin-top:8px"><button class="btn btn-gris" data-a="cerrar">No</button><button class="btn btn-blanco" data-a="borrar-entreno-si" data-id="${d.id}">Sí, borrar</button></div>`; return;
-    case 'borrar-entreno-si': S.entrenos = S.entrenos.filter(x => x.id !== d.id); borrarEntrenoNube(d.id); guardarLocal(); cerrarHoja(); toast('Entreno borrado'); break;
+    case 'borrar-entreno-si': borrarEntreno(d.id); cerrarHoja(); toast('Entreno borrado'); break;
     case 'pf-eq': { const l = S.perfil.equipo, i = l.indexOf(d.id); i >= 0 ? l.splice(i, 1) : l.push(d.id); guardar(); break; }
     case 'plan-ej': hojaPlanEj(+d.d, +d.i); return;
     case 'plan-guardar': {
@@ -1414,14 +1457,22 @@ document.addEventListener('click', async e => {
       guardar(); cerrarHoja(); break;
     }
     case 'plan-mover': { const l = S.plan.dias[+d.d].ejercicios, i = +d.i, j = i + +d.k;[l[i], l[j]] = [l[j], l[i]]; guardar(); cerrarHoja(); break; }
-    case 'plan-quitar': S.plan.dias[+d.d].ejercicios.splice(+d.i, 1); guardar(); cerrarHoja(); break;
+    case 'plan-quitar': if (S.plan.dias[+d.d].ejercicios.length < 2) { toast('Un día necesita al menos un ejercicio: cámbialo por otro'); return; } S.plan.dias[+d.d].ejercicios.splice(+d.i, 1); guardar(); cerrarHoja(); break;
     case 'plan-cambiar': busq = ''; filtroM = EJ[S.plan.dias[+d.d].ejercicios[+d.i].id].m; hojaSelector('plan-cambiar', { id: S.plan.dias[+d.d].ejercicios[+d.i].id, d: +d.d, i: +d.i }); return;
     case 'plan-add': busq = ''; filtroM = 'todos'; hojaSelector('plan-add', { d: +d.d }); return;
     case 'filtro': filtroM = d.m; hojaSelector(d.modo, hojaSelector.ctx); return;
     case 'elegir-ej': {
       const c = hojaSelector.ctx, id = d.id;
       if (c.modo === 'anadir') { S.activo.ejercicios.push({ id, obj: { repMin: 8, repMax: 12 }, descanso: 90, nota: '', series: Array.from({ length: 3 }, () => ({ kg: '', reps: '', hecho: false })) }); S.activo.idx = S.activo.ejercicios.length - 1; }
-      if (c.modo === 'cambiar') { const x = ejActual(); x.id = id; x.series.forEach(s => { if (!s.hecho) { s.kg = ''; s.reps = ''; } }); }
+      if (c.modo === 'cambiar') {
+        const x = ejActual(), vacia = () => ({ kg: '', reps: '', hecho: false });
+        if (x.series.some(s => s.hecho)) { // lo hecho se queda en el ejercicio de antes; el nuevo va detrás con las series que faltaban
+          const faltan = x.series.filter(s => !s.hecho).length || 1;
+          x.series = x.series.filter(s => s.hecho);
+          S.activo.ejercicios.splice(S.activo.idx + 1, 0, { id, obj: { ...x.obj }, descanso: x.descanso, nota: '', series: Array.from({ length: faltan }, vacia) });
+          S.activo.idx++;
+        } else { x.id = id; x.series = x.series.map(vacia); }
+      }
       if (c.modo === 'plan-add') S.plan.dias[c.d].ejercicios.push({ id, series: 3, repMin: 8, repMax: 12, descanso: 90 });
       if (c.modo === 'plan-cambiar') S.plan.dias[c.d].ejercicios[c.i].id = id;
       guardar(); cerrarHoja(); break;
@@ -1439,8 +1490,10 @@ document.addEventListener('click', async e => {
     case 'reset': $('#reset-zona').innerHTML = `<div class="tarjeta"><b>¿Borrar todo?</b><p class="sub">Se borran tu perfil, tu plan, tus entrenos y tus fotos. No se puede deshacer.</p><div class="fila"><button class="btn btn-gris" data-a="reset-no">No</button><button class="btn btn-blanco" data-a="reset-si" style="background:var(--bad);color:#fff">Sí, borrar</button></div></div>`; return;
     case 'reset-no': break;
     case 'reset-si': {
-      if (nube.ref && !S.demo) { for (const x of S.entrenos) borrarEntrenoNube(x.id); for (const f of S.fotos) borrarFotoNube(f.id); colaPerfil = colaPerfil.then(() => nube.ref.delete()).catch(() => { }); }
-      S = estadoVacio(); chat = []; guardarLocal(); break;
+      gen++; clearTimeout(tGuardar); tGuardar = null;
+      const ref = nube.ref, ids = S.entrenos.map(x => x.id), fs = S.fotos.map(f => f.id), uid = S.uid;
+      if (ref && !S.demo) colaNube = colaNube.then(async () => { for (const id of ids) await ref.collection('entrenos').doc(id).delete(); for (const id of fs) await ref.collection('fotos').doc(id).delete(); await ref.delete(); }).catch(fallo);
+      S = estadoVacio(); S.uid = uid; chat = []; guardarLocal(); break;
     }
     default: return;
   }
@@ -1451,7 +1504,7 @@ document.addEventListener('click', async e => {
 document.addEventListener('input', e => {
   const t = e.target;
   if (t.dataset.in && S.activo) { const s = ejActual().series[+t.dataset.s]; s[t.dataset.in] = t.value; guardar(); return; }
-  if (t.dataset.ob) { const v = num(t.value); if (v != null) borradorPerfil()[t.dataset.ob] = v; return; }
+  if (t.dataset.ob) { const v = num(t.value), [lo, hi] = LIM[t.dataset.ob]; if (v != null && v >= lo && v <= hi) borradorPerfil()[t.dataset.ob] = v; return; }
   if (t.dataset.busca != null) { busq = t.value; const pos = t.selectionStart; hojaSelector(t.dataset.busca, hojaSelector.ctx); const n = $('#busca-ej'); n.focus(); n.setSelectionRange(pos, pos); }
 });
 document.addEventListener('change', async e => {
@@ -1459,7 +1512,8 @@ document.addEventListener('change', async e => {
   if (t.dataset.pf) {
     const k = t.dataset.pf, v = t.value;
     if (k === 'peso') { const kg = num(v); if (kg && kg >= 30 && kg <= 250) { const hoy = hoyISO(); S.pesos = (S.pesos || []).filter(x => x.fecha !== hoy); S.pesos.push({ fecha: hoy, kg }); S.perfil.peso = kg; } }
-    else S.perfil[k] = ['edad', 'altura', 'dias', 'duracion'].includes(k) ? +v || S.perfil[k] : v;
+    else if (LIM[k]) { const n = num(v); if (n != null && n >= LIM[k][0] && n <= LIM[k][1]) S.perfil[k] = n; else { t.value = S.perfil[k]; toast('Ese valor no vale'); return; } }
+    else S.perfil[k] = ['dias', 'duracion'].includes(k) ? +v || S.perfil[k] : v;
     guardar(); return;
   }
   if (t.dataset.sel === 'ej') { ejGrafica = t.value; pintar(); return; }
