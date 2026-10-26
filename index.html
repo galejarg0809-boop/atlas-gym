@@ -12,13 +12,12 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icono-180.png">
 <link rel="icon" type="image/png" href="icono-512.png">
-<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+<link rel="preload" href="fuentes/jakarta-latin.woff2" as="font" type="font/woff2" crossorigin>
+<style>@font-face{font-family:"Plus Jakarta Sans";font-style:normal;font-weight:400 800;font-display:swap;src:url(fuentes/jakarta-latin.woff2) format("woff2")}
+:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
 </head>
 <body>
 <title>Atlas Gym</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap">
 <style>
 /* Una app de móvil en negro: columna de 480 px como máximo, barra de pestañas abajo y el entreno a pantalla completa.
    Tema único oscuro, a propósito (como la app en la que se inspira). */
@@ -80,6 +79,9 @@ p{margin:0}
 .segmento{display:flex;background:var(--s1);border:1px solid var(--line);border-radius:999px;padding:4px;margin:0 auto;width:min(270px,100%)}
 .segmento button{flex:1;height:44px;border-radius:999px;font-weight:600;color:var(--muted)}
 .segmento button.on{background:var(--fg);color:#000}
+.segmento.ancho{width:100%}
+.segmento.ancho button{height:40px;font-size:13.5px}
+.codigo{font-size:34px;font-weight:800;letter-spacing:.18em;text-align:center;padding:2px 0}
 .opciones{display:flex;flex-direction:column;gap:10px}
 .opcion{display:flex;align-items:center;gap:14px;text-align:left;background:var(--s1);border:1.5px solid transparent;border-radius:16px;padding:16px}
 .opcion.on{border-color:var(--fg);background:var(--s2)}
@@ -646,7 +648,10 @@ function emblema(t, extra = '') {
 // al conectar gana la copia con el `rev` más alto, y los entrenos y las fotos se juntan por id
 // (lo borrado se recuerda en `borrados` para que no vuelva). `gen` invalida lo pendiente al borrar todo.
 const LS = 'atlas-gym-v1';
-function estadoVacio() { return { perfil: null, plan: null, entrenos: [], pesos: [], fotos: [], escaneo: null, activo: null, demo: false, ob: { paso: 0, slide: 0 }, rev: 0, borrados: [], uid: null, ejercicios: {} }; }
+function estadoVacio() { return { perfil: null, plan: null, entrenos: [], pesos: [], fotos: [], escaneo: null, activo: null, demo: false, ob: { paso: 0, slide: 0 }, rev: 0, borrados: [], uid: null, ejercicios: {}, rutinaRev: 0, rutinaDe: null }; }
+// Lo que dice quién es (cuenta, rol, profesor) sobrevive a «Empezar de cero» y a salir de los datos de ejemplo
+const IDENTIDAD = ['uid', 'rol', 'cuenta', 'profesor', 'sinCuenta', 'codigo', 'alumnas', 'rutinaRev', 'rutinaDe', 'envios'];
+function estadoLimpio() { const n = estadoVacio(); for (const k of IDENTIDAD) if (S[k] !== undefined) n[k] = S[k]; return n; }
 let S = estadoVacio();
 try { const g = JSON.parse(localStorage.getItem(LS) || 'null'); if (g) S = { ...S, ...g }; } catch (e) { }
 function activoValido() {
@@ -660,46 +665,56 @@ let vista = 'inicio';
 try { vista = localStorage.getItem(LS + '-vista') || 'inicio'; } catch (e) { }
 let entrenoAbierto = !!S.activo;
 // Si estos datos son de una cuenta, no se enseñan hasta saber quién abre la página
-let esperandoCuenta = !!(S.uid && window.claude?.use);
+let esperandoCuenta = !!(S.uid && (window.claude?.use || (window.ATLAS_FIREBASE && !window.claude)));
 
 let nube = { db: null, ref: null, estado: 'local' }; // local | conectando | nube
 let avisoLocal = false, avisoNube = false;
 function guardarLocal() {
-  try { localStorage.setItem(LS, JSON.stringify(S)); return; } catch (e) { }
+  const E = S.ajena ? PROF : S; // los datos de la alumna que mira un profesor no se guardan en su teléfono
+  try { localStorage.setItem(LS, JSON.stringify(E)); return; } catch (e) { }
   try {
-    localStorage.setItem(LS, JSON.stringify({ ...S, fotos: [] }));
-    if (!avisoLocal) { avisoLocal = true; toast(nube.ref ? 'Las fotos ya no caben en este móvil: quedan guardadas en tu cuenta.' : 'Las fotos ya no caben en este móvil: borra alguna o se perderán al cerrar.'); }
-  } catch (e2) { if (!avisoLocal) { avisoLocal = true; toast('No se ha podido guardar en este móvil: no cierres la app hasta liberar espacio.'); } }
+    localStorage.setItem(LS, JSON.stringify({ ...E, fotos: [] }));
+    if (!avisoLocal) { avisoLocal = true; toast(nube.ref ? 'Las fotos ya no caben en este teléfono: quedan guardadas en tu cuenta.' : 'Las fotos ya no caben en este teléfono: borra alguna o se perderán al cerrar.'); }
+  } catch (e2) { if (!avisoLocal) { avisoLocal = true; toast('No se ha podido guardar en este teléfono: no cierres la app hasta liberar espacio.'); } }
 }
 let tGuardar = null, colaNube = Promise.resolve(), gen = 0;
-const cuerpoPerfil = () => JSON.parse(JSON.stringify({ perfil: S.perfil, plan: S.plan, pesos: S.pesos, escaneo: S.escaneo, activo: S.activo, ob: S.ob, rev: S.rev, borrados: S.borrados, ejercicios: S.ejercicios || {}, v: 3 }));
+const MAX_BORRADOS = 2000; // lo borrado que se recuerda para que no vuelva desde otro teléfono
+const cuerpoPerfil = () => JSON.parse(JSON.stringify({ perfil: S.perfil, plan: S.plan, pesos: S.pesos, escaneo: S.escaneo, activo: S.activo, ob: S.ob, rev: S.rev, borrados: S.borrados, ejercicios: S.ejercicios || {}, rutinaRev: S.rutinaRev || 0, rutinaDe: S.rutinaDe || null, v: 3 }));
 // Quien abre el enlace sin permiso para escribir en la cuenta (visitantes de fuera) guarda solo en su navegador
 function fallo(e) {
   console.warn('No se pudo guardar en la cuenta', e);
+  if (WEB) {
+    // 5. El servidor rechaza un perfil más viejo que el suyo (otro teléfono subió algo después): se vuelve a juntar
+    if (e?.code === 'permission-denied' && /^users\/[^/]+$/.test(e?.ruta || '')) { api?.limpiarRechazos?.(); rejuntar(); return; }
+    if (!avisoNube) { avisoNube = true; toast('Algo no se ha podido guardar en tu cuenta. Lo tienes en este teléfono.'); }
+    pintarEstado(); return;
+  }
   if (['invalid_argument', 'not_granted', 'revoked', 'capability_disabled', 'capability_removed'].includes(e?.code)) {
     if (nube.ref) { nube.ref = null; nube.estado = 'local'; if (vista === 'perfil' && !entrenoAbierto) pintar(); }
-  } else if (!avisoNube) { avisoNube = true; toast('No se ha podido guardar en tu cuenta. Queda en este móvil y se subirá la próxima vez que abras la app.'); }
+  } else if (!avisoNube) { avisoNube = true; toast('No se ha podido guardar en tu cuenta. Queda en este teléfono y se subirá la próxima vez que abras la app.'); }
 }
 // Todo lo que va a la cuenta pasa en orden por la misma cola
 function enCola(fn) { const g = gen; colaNube = colaNube.then(() => g === gen && nube.ref ? fn(nube.ref) : null).catch(fallo); }
-function subirPerfil() { tGuardar = null; const cuerpo = cuerpoPerfil(); enCola(ref => ref.set(cuerpo)); }
+function subirPerfil() { tGuardar = null; if (nube.sinJuntar) return; const cuerpo = cuerpoPerfil(); enCola(ref => ref.set(cuerpo)); }
 function guardar() {
-  S.rev = Date.now(); guardarLocal();
+  if (S.ajena) { S.ajena.sucio = true; return; } // el profesor cambia la rutina de una alumna: sale al darle a «Enviar»
+  S.rev = Math.max(Date.now(), (S.rev || 0) + 1); guardarLocal(); tocarResumen();
   if (!nube.ref || S.demo) return;
-  clearTimeout(tGuardar); tGuardar = setTimeout(subirPerfil, 700);
+  clearTimeout(tGuardar); tGuardar = setTimeout(subirPerfil, WEB ? 4000 : 700); // en la web, menos subidas (datos caros); al salir de la app sale ya
 }
 // Al bloquear el móvil o cambiar de app, lo pendiente sale en el acto
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && tGuardar) { clearTimeout(tGuardar); subirPerfil(); } });
-function subirDoc(col, x) { if (!nube.ref || S.demo) return; const cuerpo = JSON.parse(JSON.stringify(x)); enCola(ref => ref.collection(col).doc(x.id).set(cuerpo)); }
-function borrarDoc(col, id) { if (!nube.ref || S.demo) return; enCola(ref => ref.collection(col).doc(id).delete()); }
-function guardarEntreno(e) { S.rev = Date.now(); guardarLocal(); subirDoc('entrenos', e); }
-function guardarFoto(f) { S.rev = Date.now(); guardarLocal(); subirDoc('fotos', f); }
-function borrarEntreno(id) { S.entrenos = S.entrenos.filter(x => x.id !== id); S.borrados = [...(S.borrados || []), 'e:' + id].slice(-500); borrarDoc('entrenos', id); guardar(); }
-function borrarFoto(id) { S.fotos = S.fotos.filter(x => x.id !== id); S.borrados = [...(S.borrados || []), 'f:' + id].slice(-500); borrarDoc('fotos', id); guardar(); }
+function subirDoc(col, x) { if (!nube.ref || S.demo || S.ajena) return; const cuerpo = JSON.parse(JSON.stringify(x)); enCola(ref => ref.collection(col).doc(x.id).set(cuerpo)); }
+function borrarDoc(col, id) { if (!nube.ref || S.demo || S.ajena) return; enCola(ref => ref.collection(col).doc(id).delete()); }
+function guardarEntreno(e) { if (S.ajena) return; guardarLocal(); subirDoc('entrenos', e); tocarResumen(); }
+function guardarFoto(f) { if (S.ajena) return; guardarLocal(); subirDoc('fotos', f); }
+function borrarEntreno(id) { if (S.ajena) return; S.entrenos = S.entrenos.filter(x => x.id !== id); S.borrados = [...(S.borrados || []), 'e:' + id].slice(-MAX_BORRADOS); borrarDoc('entrenos', id); guardar(); }
+function borrarFoto(id) { if (S.ajena) return; S.fotos = S.fotos.filter(x => x.id !== id); S.borrados = [...(S.borrados || []), 'f:' + id].slice(-MAX_BORRADOS); borrarDoc('fotos', id); guardar(); }
 
 async function usar(nombre) { try { return window.claude?.use ? await window.claude.use(nombre) : null; } catch (e) { return null; } }
 let IA = null, IA_FOTOS = false;
 async function conectar() {
+  if (WEB) return conectarWeb();
   const g = gen;
   nube.estado = 'conectando';
   const [db, user, sample] = await Promise.all([usar('db'), usar('user'), usar('sample')]);
@@ -708,41 +723,376 @@ async function conectar() {
   if (db && user) {
     try {
       const uid = await user.id();
-      if (uid && g === gen) {
-        const ref = db.doc(`data/users/${uid}/perfil`);
-        const [snap, ents, fotos] = await Promise.all([ref.get(), ref.collection('entrenos').get(), ref.collection('fotos').get()]);
-        if (g !== gen) return; // se borró todo mientras tanto
-        if (S.uid && S.uid !== uid) S = estadoVacio(); // lo guardado en este navegador es de otra cuenta: ni se enseña ni se mezcla
-        if (!S.demo) {
-          const d = snap.exists ? JSON.parse(JSON.stringify(snap.data())) : null;
-          const borr = new Set([...(d?.borrados || []), ...(S.borrados || [])]);
-          const remE = ents.docs.map(x => JSON.parse(JSON.stringify(x.data()))), remF = fotos.docs.map(x => ({ ...x.data() }));
-          const juntar = (rem, loc, pre) => { const m = new Map(); for (const x of rem) m.set(x.id, x); for (const x of loc) if (!m.has(x.id)) m.set(x.id, x); return [...m.values()].filter(x => !borr.has(pre + x.id)); };
-          const usarLocal = !!S.perfil && (!d?.perfil || (S.rev || 0) > (d.rev || 0));
-          S = {
-            ...S, ...(usarLocal || !d?.perfil ? {} : d), uid, demo: false, borrados: [...borr].slice(-500),
-            ejercicios: usarLocal || !d?.perfil ? { ...(d?.ejercicios || {}), ...(S.ejercicios || {}) } : { ...(S.ejercicios || {}), ...(d.ejercicios || {}) },
-            entrenos: juntar(remE, S.entrenos, 'e:').sort((a, b) => a.fecha.localeCompare(b.fecha) || (a.inicio || 0) - (b.inicio || 0)),
-            fotos: juntar(remF, S.fotos, 'f:').sort((a, b) => a.fecha.localeCompare(b.fecha)),
-          };
-          if (S.activo && S.entrenos.some(e => e.id === S.activo.id)) S.activo = null; // ya estaba terminado
-          activoValido();
-          entrenoAbierto = entrenoAbierto && !!S.activo;
-          guardarLocal();
-          if (usarLocal || !d?.perfil) await ref.set(cuerpoPerfil()); // si no deja escribir, salta al catch y se queda en el navegador
-          nube.db = db; nube.ref = ref;
-          const idsE = new Set(remE.map(x => x.id)), idsF = new Set(remF.map(x => x.id));
-          for (const e of S.entrenos) if (!idsE.has(e.id)) subirDoc('entrenos', e);
-          for (const f of S.fotos) if (!idsF.has(f.id)) subirDoc('fotos', f);
-          for (const b of borr) { const id = b.slice(2); if (b[0] === 'e' && idsE.has(id)) borrarDoc('entrenos', id); if (b[0] === 'f' && idsF.has(id)) borrarDoc('fotos', id); }
-        } else { nube.db = db; nube.ref = ref; }
-        nube.estado = 'nube';
-      }
+      if (uid && g === gen && await juntarConCuenta(db.doc(`data/users/${uid}/perfil`), uid, g) === false) return; // se borró todo mientras tanto
     } catch (e) { console.warn('Sin guardado en la cuenta', e); nube.ref = null; nube.estado = 'local'; }
   }
   if (nube.estado !== 'nube') nube.estado = 'local';
   esperandoCuenta = false;
   pintar();
+}
+// Junta lo del teléfono con lo de la cuenta (la de Claude o la de Firebase: las dos tienen la misma forma)
+async function juntarConCuenta(ref, uid, g) {
+  const [snap, ents, fotos] = await Promise.all([ref.get(), ref.collection('entrenos').get(), ref.collection('fotos').get()]);
+  if (g !== gen) return false;
+  if (S.uid && S.uid !== uid) S = estadoVacio(); // lo guardado en este navegador es de otra cuenta: ni se enseña ni se mezcla
+  if (!S.demo) {
+    const d = snap.exists ? JSON.parse(JSON.stringify(snap.data())) : null;
+    const borr = new Set([...(d?.borrados || []), ...(S.borrados || [])]);
+    const remE = ents.docs.map(x => JSON.parse(JSON.stringify(x.data()))), remF = fotos.docs.map(x => ({ ...x.data() }));
+    const juntar = (rem, loc, pre) => { const m = new Map(); for (const x of rem) m.set(x.id, x); for (const x of loc) if (!m.has(x.id)) m.set(x.id, x); return [...m.values()].filter(x => !borr.has(pre + x.id)); };
+    const usarLocal = !!S.perfil && (!d?.perfil || (S.rev || 0) > (d.rev || 0));
+    const rr = (d?.rutinaRev || 0) > (S.rutinaRev || 0) ? d : S; // la última rutina aplicada, en este teléfono o en otro
+    const borrNuevos = [...borr].some(b => !(d?.borrados || []).includes(b));
+    S = {
+      ...S, ...(usarLocal || !d?.perfil ? {} : d), uid, demo: false, borrados: [...borr].slice(-MAX_BORRADOS),
+      ejercicios: usarLocal || !d?.perfil ? { ...(d?.ejercicios || {}), ...(S.ejercicios || {}) } : { ...(S.ejercicios || {}), ...(d.ejercicios || {}) },
+      rutinaRev: rr.rutinaRev || 0, rutinaDe: rr.rutinaDe || null,
+      entrenos: juntar(remE, S.entrenos, 'e:').sort((a, b) => a.fecha.localeCompare(b.fecha) || (a.inicio || 0) - (b.inicio || 0)),
+      fotos: juntar(remF, S.fotos, 'f:').sort((a, b) => a.fecha.localeCompare(b.fecha)),
+    };
+    if (S.activo && S.entrenos.some(e => e.id === S.activo.id)) S.activo = null; // ya estaba terminado
+    activoValido();
+    entrenoAbierto = entrenoAbierto && !!S.activo;
+    guardarLocal();
+    // Leído de la caché del teléfono (sin red): se sigue en el teléfono y se junta de verdad cuando haya red
+    nube.sinJuntar = !!snap.deCache;
+    if (!nube.sinJuntar && (usarLocal || !d?.perfil || borrNuevos)) await ref.set(cuerpoPerfil()); // si no deja escribir, salta al catch y se queda en el navegador
+    if (g !== gen) return false;
+    nube.ref = ref;
+    const idsE = new Set(remE.map(x => x.id)), idsF = new Set(remF.map(x => x.id));
+    for (const e of S.entrenos) if (!idsE.has(e.id)) subirDoc('entrenos', e);
+    for (const f of S.fotos) if (!idsF.has(f.id)) subirDoc('fotos', f);
+    for (const b of borr) { const id = b.slice(2); if (b[0] === 'e' && idsE.has(id)) borrarDoc('entrenos', id); if (b[0] === 'f' && idsF.has(id)) borrarDoc('fotos', id); }
+  } else nube.ref = ref;
+  nube.estado = 'nube';
+  if (nube.sinJuntar) reintentarJuntar();
+}
+
+// ---------- Versión web: alumnas y profesores (Firebase) ----------
+// Solo en la web: construir.py pone window.ATLAS_FIREBASE y carga nube.js, que deja window.atlasNube.
+// Cada alumna entra con Google y guarda lo suyo en su cuenta; el profesor ve a las que se han
+// conectado con su código y les manda la rutina. Todo funciona sin red: lo de la nube llega cuando puede.
+const WEB = !!window.ATLAS_FIREBASE && !window.claude;
+let api = null;          // window.atlasNube cuando ha cargado
+let PROF = null;         // el estado del profesor mientras mira a una alumna (S es entonces el de ella)
+let quitarEscuchas = [], quitarAlumna = null, escuchandoSesion = false;
+// Al volver de la página de Google la app tarda unos segundos en saber quién es: mientras, «Entrando…»
+let entrando = false;
+try { entrando = !!sessionStorage.getItem(LS + '-entrando'); } catch (e) { }
+function marcarEntrando(v) { entrando = v; try { v ? sessionStorage.setItem(LS + '-entrando', '1') : sessionStorage.removeItem(LS + '-entrando'); } catch (e) { } }
+window.atlasFalloNube = e => fallo(e);
+window.atlasEstadoNube = () => pintarEstado();
+// Solo la línea de estado (cada escritura avisa dos veces: no se repinta todo)
+function pintarEstado() { const el = $('.estado'); if (el) el.outerHTML = lineaEstado(); }
+// Juntarse otra vez con la cuenta: tras un rechazo del servidor o cuando la primera vez no había red
+let tJuntar = null, saliendo = false, guardadoAjeno = null;
+async function rejuntar() {
+  clearTimeout(tJuntar); tJuntar = null;
+  if (!WEB || !api?.usuario || S.ajena || S.rol !== 'alumna' || S.uid !== api.usuario.uid) return;
+  const g = gen;
+  try { await juntarConCuenta(api.perfil(S.uid), S.uid, g); if (g === gen) pintarSiPuede(); }
+  catch (e) { console.warn('Juntar con la cuenta', e?.code || e); reintentarJuntar(); }
+}
+function reintentarJuntar() { if (!tJuntar) tJuntar = setTimeout(() => { tJuntar = null; if (navigator.onLine) rejuntar(); else reintentarJuntar(); }, 60000); }
+if (WEB) {
+  // Enlaces: ?rol=profesor (la versión de profesores) y ?codigo=ABC123 (invitación de un profesor)
+  const q = new URLSearchParams(location.search);
+  if (['profesor', 'alumna'].includes(q.get('rol'))) S.rolPedido = q.get('rol');
+  const c = (q.get('codigo') || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (c.length === 6) { S.codigoPend = c; S.rolPedido ||= 'alumna'; }
+  if (q.toString()) { guardarLocal(); try { history.replaceState(null, '', location.pathname); } catch (e) { } } // (para que siga ahí al volver de Google)
+  window.addEventListener('online', () => {
+    if (api?.usuario && nube.estado !== 'nube') return conectar();
+    if (nube.sinJuntar) rejuntar();
+    const E = PROF || S;
+    if (E.rol === 'profesor' && api?.usuario) { if (!E.codigo) crearCodigoProf(); revisarEnvios(); } // 16. el código, en cuanto hay red
+    pintarSiPuede();
+  });
+  window.addEventListener('offline', () => pintarSiPuede());
+}
+
+async function conectarWeb() {
+  if (S.ajena) salirDeAlumna(); // (solo pasa si cambia la sesión mientras el profesor mira a una alumna)
+  const g = ++genWeb;
+  nube.estado = 'conectando';
+  // Sin red la primera vez, Firebase no llega a cargar: se sigue en el teléfono y se reintenta con red
+  api = await Promise.race([window.atlasNubeLista || null, new Promise(r => setTimeout(() => r(null), 20000))]);
+  if (g !== genWeb) return;
+  // (sin Firebase no se puede saber quién es: se enseña lo del teléfono, que es lo único que hay)
+  if (!api) { nube.estado = 'local'; marcarEntrando(false); esperandoCuenta = false; pintarSiPuede(); return; }
+  await api.listo;
+  const u = api.usuario;
+  marcarEntrando(false);
+  nube.sesion = u?.uid || null;
+  if (!escuchandoSesion) {
+    escuchandoSesion = true;
+    api.alCambiar(u2 => {
+      const nuevo = u2?.uid || null;
+      if (nuevo === nube.sesion) return;
+      // Lo que estaba en marcha para la sesión de antes ya no vale
+      gen++; nube.ref = null; nube.sinJuntar = false; clearTimeout(tGuardar); tGuardar = null; clearTimeout(tResumen); clearTimeout(tJuntar); tJuntar = null;
+      if (saliendo) return;
+      if (!nuevo && nube.sesion) return cerradaFuera(); // ha cerrado sesión en otra pestaña
+      conectar();
+    });
+  }
+  quitarEscuchas.forEach(f => f()); quitarEscuchas = [];
+  if (!u) {
+    nube.ref = null; nube.estado = 'local';
+    // Lo guardado es de una cuenta que no ha entrado: no se enseña (se recupera si vuelve a entrar ella)
+    if (S.uid) { guardadoAjeno = S; S = { ...estadoVacio(), rolPedido: S.rolPedido, codigoPend: S.codigoPend }; vista = 'inicio'; }
+    if (pendienteLimpiar()) return;
+    esperandoCuenta = false; pintarSiPuede(); return;
+  }
+  if (!S.uid && guardadoAjeno?.uid === u.uid) S = { ...guardadoAjeno, rolPedido: S.rolPedido || guardadoAjeno.rolPedido, codigoPend: S.codigoPend || guardadoAjeno.codigoPend };
+  guardadoAjeno = null;
+  if (S.uid && S.uid !== u.uid) { S = estadoVacio(); vista = 'inicio'; } // datos de otra cuenta: ni se enseñan ni se mezclan
+  esperandoCuenta = false; pintarSiPuede(); // ya se sabe que son suyos: se enseñan mientras se junta con la cuenta
+  S.uid = u.uid; S.cuenta = { nombre: u.nombre, email: u.email };
+  let c = null;
+  try { c = await api.leerCuenta(); } catch (e) { console.warn('Ficha de cuenta', e?.code || e); }
+  if (g !== genWeb) return;
+  if (!c?.rol && !S.rol && S.codigoPend) S.rol = 'alumna'; // viene de una invitación: es alumna
+  if (!c?.rol && S.rol) api.guardarCuenta({ rol: S.rol, nombre: u.nombre, email: u.email, creada: hoyISO() }); // rol elegido sin red
+  aplicarCuenta(c);
+  guardarLocal();
+  quitarEscuchas.push(api.escucharCuenta(c2 => { if (g !== genWeb) return; aplicarCuenta(c2); guardarLocal(); if (!S.ajena) pintarSiPuede(); }));
+  if (S.rol) await arrancarRol(g); else nube.estado = 'nube';
+  pintarSiPuede();
+}
+let genWeb = 0;
+// La ficha de la cuenta es de quien ha entrado: si el profesor está mirando a una alumna, va a PROF
+function aplicarCuenta(c) {
+  if (!c) return;
+  const E = PROF || S;
+  if (c.rol) E.rol = c.rol;
+  if (E.rol === 'alumna') {
+    const antes = E.profesor?.id || null;
+    E.profesor = c.profesorId ? { id: c.profesorId, nombre: c.profesorNombre || 'Tu profesor' } : null;
+    if ((E.profesor?.id || null) !== antes) { E.rutinaPend = null; if (ultimaRutina) recibirRutina(ultimaRutina); } // 10 y 11
+  }
+  if (E.rol === 'profesor') E.codigo = c.codigo || null;
+}
+// Ha cerrado sesión en otra pestaña: esta suelta la caché (para que la otra la pueda borrar) y no enseña nada
+function cerradaFuera() {
+  quitarEscuchas.forEach(f => f()); quitarEscuchas = []; quitarAlumna?.(); quitarAlumna = null;
+  api?.soltar();
+  try { localStorage.removeItem(LS); localStorage.removeItem(LS + '-vista'); } catch (e) { }
+  S = estadoVacio(); PROF = null; esperandoCuenta = false; cerrarHoja();
+  app.innerHTML = `<div class="ob"><div class="logo">${logoSVG()}<span>tlas</span></div><div class="ob-pie"><h1 class="centro" style="font-size:26px">Se ha cerrado la sesión</h1><p class="sub centro">La has cerrado en otra pestaña.</p><button class="btn btn-blanco" data-a="recargar">Volver a entrar</button></div></div>`;
+}
+// Si al cerrar sesión no se pudo borrar la caché (había otra pestaña abierta), se termina ahora
+function pendienteLimpiar() {
+  let p = false; try { p = !!localStorage.getItem(LS + '-limpiar'); localStorage.removeItem(LS + '-limpiar'); } catch (e) { }
+  if (!p) return false;
+  api.salir({ forzar: true }).then(ok => { if (ok) location.reload(); else { esperandoCuenta = false; pintar(); toast('Cierra las otras pestañas de Atlas para borrar los datos de este teléfono.'); } });
+  return true;
+}
+async function arrancarRol(g) {
+  if (S.rol === 'alumna') {
+    try { await juntarConCuenta(api.perfil(S.uid), S.uid, gen); }
+    catch (e) { console.warn('Sin sincronizar (se reintenta con red)', e?.code || e); nube.ref = null; nube.estado = 'local'; }
+    if (g !== genWeb) return;
+    quitarEscuchas.push(api.escucharRutina(r => { if (g === genWeb) recibirRutina(r); }));
+    ultResumen = ''; tocarResumen();
+    if (S.codigoPend && !S.profesor) hojaVincular(S.codigoPend);
+  } else if (S.rol === 'profesor') {
+    nube.ref = null; nube.estado = 'nube';
+    quitarEscuchas.push(api.escucharAlumnas(l => {
+      if (g !== genWeb) return;
+      const lista = l.filter(a => idBien(a.uid)).map(a => ({ uid: a.uid, nombre: texto(a.nombre || 'Sin nombre', 80), resumen: limpiarResumen(a.resumen) }));
+      if (PROF) PROF.alumnas = lista; else S.alumnas = lista;
+      guardarLocal(); pintarSiPuede();
+    }));
+    if (!S.codigo) crearCodigoProf();
+    revisarEnvios();
+  }
+}
+// El profesor manda una rutina: se pone en lugar de la de ahora (el historial no se toca)
+// La última que ha llegado se guarda: si la cuenta (con quién es su profesor) llega después, se vuelve a mirar
+let ultimaRutina = null;
+function recibirRutina(r) {
+  ultimaRutina = r;
+  if (!r?.plan || S.ajena || S.rol !== 'alumna') return;
+  if (!S.profesor || r.profesorId !== S.profesor.id) return; // de un profesor que ya no es el suyo
+  if (r.profesorId === S.rutinaDe && !(r.rev > (S.rutinaRev || 0))) return; // ya aplicada (cada profesor numera las suyas)
+  if (r.rev === S.rutinaMala) return;
+  if (!S.perfil || !S.plan || S.ob?.paso < 99) { S.rutinaPend = r; guardarLocal(); return; } // aún en la bienvenida
+  aplicarRutina(r);
+}
+// ---- Lo que llega de otra persona se limpia antes de usarlo ----
+// Cualquiera con el código puede conectarse: un dato raro de una alumna no puede romper ni colar nada
+// en el teléfono del profesor (ni al revés con la rutina). Números a número, textos cortos, ids simples.
+const idBien = v => typeof v === 'string' && /^[A-Za-z0-9_-]{1,60}$/.test(v);
+const fechaBien = v => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null;
+const numero = (v, a, b, def = null) => { const k = +v; return v !== null && v !== '' && Number.isFinite(k) ? clamp(k, a, b) : def; };
+const entero = (v, a, b, def) => { const k = numero(v, a, b, null); return k == null ? def : Math.round(k); };
+const texto = (v, n) => String(v ?? '').slice(0, n);
+function limpiarEjercicios(o) { const r = {}; if (o && typeof o === 'object') for (const [k, v] of Object.entries(o)) if (idBien(k) && v && typeof v === 'object') r[k] = v; return r; } // rehacerEJ valida cada campo
+// Necesita EJ ya hecho con los ejercicios de quien es la rutina
+function limpiarPlan(pl, fuente) {
+  const dias = (Array.isArray(pl?.dias) ? pl.dias : []).slice(0, MAX_DIAS).map((d, i) => ({
+    nombre: texto(d?.nombre || `Día ${i + 1}`, 40),
+    ejercicios: (Array.isArray(d?.ejercicios) ? d.ejercicios : []).filter(x => idBien(x?.id) && EJ[x.id] && !EJ[x.id].fantasma).slice(0, 30).map(x => {
+      const repMin = entero(x.repMin, 1, 50, 8);
+      return { id: x.id, series: entero(x.series, 1, 10, 3), repMin, repMax: entero(x.repMax, repMin, 60, Math.max(12, repMin)), descanso: entero(x.descanso, 15, 600, 90) };
+    }),
+  }));
+  return { nombre: texto(pl?.nombre || 'Rutina', 60), fuente: fuente || (['ia', 'propia', 'profesor', 'local'].includes(pl?.fuente) ? pl.fuente : ''), nota: texto(pl?.nota, 300), dias };
+}
+function limpiarEntreno(e) {
+  if (!e || typeof e !== 'object' || !idBien(e.id) || !fechaBien(e.fecha)) return null;
+  return {
+    id: e.id, fecha: e.fecha, inicio: numero(e.inicio, 0, 9e15, 0), duracion: numero(e.duracion, 0, 86400, 0), diaIdx: entero(e.diaIdx, 0, MAX_DIAS, 0), nombre: texto(e.nombre, 60), bw: numero(e.bw, 20, 400, null),
+    ejercicios: (Array.isArray(e.ejercicios) ? e.ejercicios : []).filter(x => idBien(x?.id)).slice(0, 40).map(x => ({
+      id: x.id, nota: texto(x.nota, 300), ...(x.def && typeof x.def === 'object' ? { def: x.def } : {}),
+      series: (Array.isArray(x.series) ? x.series : []).slice(0, 30).map(z => ({ kg: numero(z?.kg, 0, 1000, 0), reps: entero(z?.reps, 0, 500, 0), hecho: !!z?.hecho })),
+    })),
+  };
+}
+function limpiarPerfil(p) {
+  if (!p || typeof p !== 'object') return null;
+  return { sexo: p.sexo === 'hombre' ? 'hombre' : 'mujer', edad: entero(p.edad, ...LIM.edad, 30), peso: numero(p.peso, ...LIM.peso, 60), altura: entero(p.altura, ...LIM.altura, 160), objetivo: OBJ[p.objetivo] ? p.objetivo : 'musculo', nivel: NIVEL[p.nivel] ? p.nivel : 'principiante', dias: entero(p.dias, 1, 7, 3), duracion: entero(p.duracion, 15, 240, 60), equipo: (Array.isArray(p.equipo) ? p.equipo : []).filter(x => NOMBRE_EQ[x]) };
+}
+const limpiarPesos = l => (Array.isArray(l) ? l : []).filter(x => fechaBien(x?.fecha) && numero(x.kg, 20, 400) != null).map(x => ({ fecha: x.fecha, kg: numero(x.kg, 20, 400) })).slice(-500);
+const limpiarResumen = r => !r || typeof r !== 'object' ? null : {
+  ultimo: fechaBien(r.ultimo), lunes: fechaBien(r.lunes), semanas: (Array.isArray(r.semanas) ? r.semanas : []).slice(0, 8).map(v => entero(v, 0, 99, 0)),
+  dias: entero(r.dias, 0, 7, 0), total: entero(r.total, 0, 1e5, 0), rango: numero(r.rango, 0, 20.999, null), peso: numero(r.peso, 20, 400, null), rutina: texto(r.rutina, 60),
+};
+function aplicarRutina(r) {
+  S.rutinaPend = null;
+  if (!S.profesor || r.profesorId !== S.profesor.id) return; // se ha desconectado o ha cambiado de profesor
+  // Se mira entera antes de tocar nada: una rutina que no se puede abrir no se come la que tiene
+  const antes = S.ejercicios;
+  S.ejercicios = { ...(S.ejercicios || {}), ...limpiarEjercicios(r.defs) };
+  rehacerEJ();
+  const plan = limpiarPlan(r.plan, 'profesor');
+  if (!plan.dias.some(d => d.ejercicios.length)) {
+    S.ejercicios = antes; rehacerEJ(); S.rutinaMala = r.rev; guardarLocal();
+    toast(`${r.profesorNombre || 'Tu profesor'} te ha mandado una rutina que no se puede abrir: pídele que te la mande otra vez`);
+    return;
+  }
+  S.rutinaRev = r.rev; S.rutinaDe = r.profesorId;
+  S.plan = { ...plan, nota: '' };
+  guardar();
+  toast(`${r.profesorNombre || 'Tu profesor'} te ha mandado una rutina nueva`);
+  pintarSiPuede();
+}
+// Resumen de la alumna en su ficha: con eso el profesor ve la lista sin bajarse los entrenos de todas
+let tResumen = null, ultResumen = '';
+function resumenAlumna() {
+  const lun = lunesDe(hoyISO()), ult = S.entrenos[S.entrenos.length - 1];
+  const semanas = Array.from({ length: 8 }, (_, i) => sumarDias(lun, -7 * (7 - i))).map(s => S.entrenos.filter(e => lunesDe(e.fecha) === s).length);
+  return { ultimo: ult?.fecha || null, lunes: lun, semanas, dias: S.perfil?.dias || 0, total: S.entrenos.length, rango: rangoGlobal(rangosMusculo()) ?? null, peso: S.pesos?.length ? S.pesos[S.pesos.length - 1].kg : S.perfil?.peso ?? null, rutina: S.plan?.nombre || '' };
+}
+function tocarResumen() {
+  if (!WEB || !api?.usuario || S.rol !== 'alumna' || S.demo || S.ajena || !S.perfil || !S.plan) return;
+  clearTimeout(tResumen);
+  tResumen = setTimeout(() => {
+    if (S.ajena || S.rol !== 'alumna' || !S.perfil || !S.plan) return;
+    const r = resumenAlumna(), j = JSON.stringify(r);
+    if (j !== ultResumen) { ultResumen = j; api.guardarCuenta({ resumen: r }); }
+  }, 1500);
+}
+// Lo que llega de la red no repinta mientras se escribe en un campo (se perdería lo escrito)
+let repintar = false;
+const escribiendo = () => { const f = document.activeElement; return !!f && /^(INPUT|TEXTAREA|SELECT)$/.test(f.tagName) && app.contains(f); };
+function pintarSiPuede() { if (escribiendo()) { repintar = true; return; } pintar(); }
+document.addEventListener('focusout', () => { if (repintar) setTimeout(() => { if (repintar && !escribiendo()) { repintar = false; pintar(); } }, 0); });
+
+function despuesDeSalir() {
+  gen++; clearTimeout(tGuardar); clearTimeout(tResumen);
+  try { localStorage.removeItem(LS); localStorage.removeItem(LS + '-vista'); } catch (e) { }
+  location.reload();
+}
+// Profesor: su código y mirar a una alumna
+let creandoCodigo = false;
+async function crearCodigoProf() {
+  const E = PROF || S;
+  if (creandoCodigo || !api?.usuario || E.rol !== 'profesor') return;
+  if (!navigator.onLine) { pintarSiPuede(); return; }
+  creandoCodigo = true; pintarSiPuede();
+  try { const c = await api.crearCodigo(E.codigo); (PROF || S).codigo = c; guardarLocal(); }
+  catch (e) { console.warn(e); toast(['sin-red', 'unavailable', 'deadline-exceeded'].includes(e?.code) ? 'Sin conexión: tu código se crea cuando tengas red' : 'No se ha podido crear tu código. Prueba otra vez.'); }
+  finally { creandoCodigo = false; pintarSiPuede(); }
+}
+// 8. Envíos de rutina que se quedaron sin saber (la app se cerró): ¿llegaron, siguen en cola o se perdieron?
+let revisandoEnvios = false;
+async function revisarEnvios() {
+  const E = PROF || S;
+  if (revisandoEnvios || !api?.usuario || E.rol !== 'profesor' || !E.envios) return;
+  revisandoEnvios = true;
+  try {
+    for (const [uid, e] of Object.entries(E.envios)) {
+      if (e.error || enviandoA.has(uid)) continue;
+      const est = await api.estadoEnvio(uid, e.rev);
+      const E2 = PROF || S; if (E2.envios?.[uid]?.rev !== e.rev) continue;
+      if (est === 'enviada') delete E2.envios[uid]; else if (est === 'perdida') E2.envios[uid].error = true;
+    }
+    guardarLocal(); if (!S.ajena) pintarSiPuede();
+  } finally { revisandoEnvios = false; }
+}
+const PERFIL_DEFECTO = () => ({ sexo: 'mujer', edad: 30, peso: 62, altura: 160, objetivo: 'musculo', nivel: 'principiante', dias: 3, duracion: 60, equipo: [...TODO_EQUIPO] });
+function abrirAlumna(uid) {
+  if (!api?.usuario || S.ajena) return;
+  const a = (S.alumnas || []).find(x => x.uid === uid); if (!a) return;
+  const env = S.envios?.[uid]; // una rutina suya que no se sabe si ha llegado
+  PROF = S;
+  S = { ...estadoVacio(), ob: { paso: 99 }, perfil: PERFIL_DEFECTO(), plan: planEnBlanco(3), ajena: { uid, nombre: a.nombre, tab: 'resumen', sucio: !!env?.error, envio: env ? (env.error ? 'error' : 'enviando') : null, cargando: true, resumen: a.resumen } };
+  if (env) { S.ejercicios = limpiarEjercicios(env.defs); rehacerEJ(); S.plan = { ...limpiarPlan(env.plan, 'profesor'), nota: '' }; }
+  window.scrollTo(0, 0); pintar();
+  quitarAlumna = api.escucharAlumna(uid, ({ perfil, entrenos, rutina }) => {
+    if (!S.ajena || S.ajena.uid !== uid) return;
+    S.ajena.rutinaRevActual = numero(rutina?.rev, 0, 9e15, 0);
+    const A = S.ajena, d = perfil && typeof perfil === 'object' ? perfil : {};
+    const n = {
+      ...estadoVacio(), ob: { paso: 99 }, demo: false, ajena: A, fotos: [],
+      perfil: limpiarPerfil(d.perfil), pesos: limpiarPesos(d.pesos), ejercicios: limpiarEjercicios(d.ejercicios),
+      entrenos: (Array.isArray(entrenos) ? entrenos : []).map(limpiarEntreno).filter(Boolean).sort((x, y) => x.fecha.localeCompare(y.fecha) || x.inicio - y.inicio),
+    };
+    A.enCurso = d.activo && typeof d.activo === 'object' ? { nombre: texto(d.activo.nombre, 60) } : null;
+    A.sinPerfil = !n.perfil; if (!n.perfil) n.perfil = PERFIL_DEFECTO();
+    const suyo = A.sucio || A.envio; // lo que el profesor está cambiando o enviando no se pisa
+    if (suyo) { n.plan = S.plan; n.ejercicios = S.ejercicios; }
+    A.cargando = false;
+    S = n; rehacerEJ();
+    if (!suyo) S.plan = limpiarPlan(d.plan);
+    if (!S.plan.dias.length) S.plan = planEnBlanco(clamp(S.perfil.dias || 3, 1, 7));
+    pintarSiPuede();
+  }, e => {
+    // Se ha desconectado de él (o él la ha soltado en otro teléfono): fuera de la pantalla
+    if (e?.code !== 'permission-denied' || S.ajena?.uid !== uid) return;
+    const nombre = nombreCorto(S.ajena.nombre);
+    salirDeAlumna(); toast(`${nombre} ya no está conectada contigo`);
+  });
+}
+function salirDeAlumna() {
+  quitarAlumna?.(); quitarAlumna = null;
+  if (PROF) { S = PROF; PROF = null; }
+  cerrarHoja(); window.scrollTo(0, 0); pintar();
+}
+// Se guarda como envío pendiente (en su teléfono) hasta que el servidor la acepta: si la rechaza,
+// el profesor no pierde lo que ha montado y la puede volver a enviar
+const enviandoA = new Set(); // las alumnas con un envío en marcha en esta sesión
+function enviarRutina() {
+  const A = S.ajena, uid = A.uid, nombre = nombreCorto(A.nombre), usados = new Set(S.plan.dias.flatMap(d => d.ejercicios.map(x => x.id))), defs = {};
+  // Los ejercicios propios o cambiados que salen en la rutina van con ella, para que su app los conozca
+  for (const id of usados) if (S.ejercicios?.[id]) { const c = { ...S.ejercicios[id] }; delete c.oculto; defs[id] = c; }
+  // Cada envío, un número mayor que el anterior (las reglas lo exigen; no depende de la hora del teléfono)
+  const rev = Math.max(Date.now(), (A.rutinaRevActual || 0) + 1);
+  const datos = { plan: { nombre: S.plan.nombre, dias: S.plan.dias }, defs, rev };
+  PROF.envios = { ...(PROF.envios || {}), [uid]: datos }; guardarLocal();
+  A.sucio = false; A.envio = 'enviando'; enviandoA.add(uid);
+  if (!navigator.onLine) toast('Sin conexión: la rutina sale sola cuando vuelva la red');
+  const acabar = ok => {
+    enviandoA.delete(uid);
+    const E = PROF || S, mio = E.envios?.[uid]?.rev === rev;
+    if (mio) { if (ok) delete E.envios[uid]; else E.envios[uid].error = true; guardarLocal(); }
+    if (S.ajena?.uid === uid && mio) { S.ajena.envio = ok ? null : 'error'; if (ok) S.ajena.rutinaRevActual = rev; else S.ajena.sucio = true; }
+    toast(ok ? `Rutina enviada a ${nombre}` : `No se ha podido enviar la rutina a ${nombre}. Ábrela y vuelve a enviarla.`);
+    pintarSiPuede();
+  };
+  api.enviarRutina(uid, datos).then(() => acabar(true), e => { console.warn('Enviar rutina', e?.code || e); acabar(false); });
 }
 
 // ---------- Plan local (sin IA) ----------
@@ -921,6 +1271,13 @@ const app = $('#app');
 function pintar() {
   rehacerEJ();
   if (esperandoCuenta) { app.innerHTML = '<p class="vacio" style="padding-top:40vh">Cargando…</p>'; return; }
+  if (WEB) {
+    const solo = h => { app.innerHTML = h; document.body.style.overflow = ''; };
+    if (S.ajena) return solo(vistaAlumnaProf());
+    if (!S.uid && !S.sinCuenta && !S.perfil) return solo(vistaEntrada());
+    if (S.uid && !S.rol) return solo(vistaRol());
+    if (S.rol === 'profesor') return solo(vistaProfesor());
+  }
   if (!S.perfil || !S.plan || S.ob.paso < 99) { app.innerHTML = vistaOnboarding(); montarOnboarding(); return; }
   let h = '';
   if (vista === 'inicio') h = vistaInicio();
@@ -942,7 +1299,7 @@ const logoSVG = (c = 'currentColor') => `<svg viewBox="0 0 40 40" aria-hidden="t
 
 // ---------- Onboarding ----------
 const PASOS = ['bienvenida', 'sexo', 'datos', 'objetivo', 'nivel', 'relato', 'dias', 'equipo', 'promesa', 'generando', 'listo'];
-function borradorPerfil() { return S.ob.p ||= { sexo: 'hombre', edad: 25, peso: 70, altura: 175, objetivo: 'musculo', nivel: 'intermedio', dias: 4, duracion: 60, equipo: [...TODO_EQUIPO] }; }
+function borradorPerfil() { return S.ob.p ||= { sexo: WEB ? 'mujer' : 'hombre', edad: 25, peso: WEB ? 62 : 70, altura: WEB ? 160 : 175, objetivo: 'musculo', nivel: 'intermedio', dias: 4, duracion: 60, equipo: [...TODO_EQUIPO] }; }
 function laurel(volteado) {
   let hojas = '';
   for (let i = 0; i < 7; i++) {
@@ -1077,6 +1434,8 @@ function terminarOnboarding() {
   S.plan = S.ob.planNuevo;
   S.pesos = [{ fecha: hoyISO(), kg: p.peso }];
   S.ob = { paso: 99 };
+  const r = ultimaRutina || S.rutinaPend; S.rutinaPend = null;
+  if (r) recibirRutina(r); // vuelve a mirar que sea de su profesor de ahora
   vista = 'inicio'; guardar(); pintar();
 }
 
@@ -1181,23 +1540,22 @@ function finalizar(descartar) {
 }
 
 // ---------- Rangos ----------
-function vistaRangos() {
+function vistaRangos(ver = false) {
   const r = rangosMusculo(), g = rangoGlobal(r);
   const col = {}; for (const m in r) col[m] = r[m] ? colorRango(r[m].t) : 'var(--body)';
   const conDatos = Object.values(r).filter(Boolean).length;
   const sig = g == null ? null : Math.min(20.999, Math.floor(g) + 1);
-  return `<div class="pantalla">
-    <div class="cab"><h1>Rangos</h1></div>
-    <div class="rango-top">${emblema(g)}<div class="crece"><span class="etq">Tu rango</span><h2 style="color:${colorRango(g)}">${nombreRango(g)}</h2>
-      ${g == null ? '<p class="sub">Haz tu primer entreno para tener rango.</p>' : `<div class="prog"><i style="width:${(g % 1) * 100}%;background:${colorRango(g)}"></i></div><p class="sub" style="margin-top:6px">${conDatos} de 13 músculos con rango${sig != null && Math.floor(g) < 20 ? ` · siguiente: ${nombreRango(sig)}` : ''}</p>`}</div></div>
+  return `${ver ? '' : '<div class="pantalla"><div class="cab"><h1>Rangos</h1></div>'}
+    <div class="rango-top">${emblema(g)}<div class="crece"><span class="etq">${ver ? 'Su rango' : 'Tu rango'}</span><h2 style="color:${colorRango(g)}">${nombreRango(g)}</h2>
+      ${g == null ? `<p class="sub">${ver ? 'Aún no tiene rango: sale con su primer entreno.' : 'Haz tu primer entreno para tener rango.'}</p>` : `<div class="prog"><i style="width:${(g % 1) * 100}%;background:${colorRango(g)}"></i></div><p class="sub" style="margin-top:6px">${conDatos} de 13 músculos con rango${sig != null && Math.floor(g) < 20 ? ` · siguiente: ${nombreRango(sig)}` : ''}</p>`}</div></div>
     <div class="mapa">${figura('F', col)}${figura('B', col)}</div>
     <div class="leyenda">${TIERS.map(t => `<span><i style="background:${t[1]}"></i>${t[0]}</span>`).join('')}</div>
-    ${!window.claude ? '' : `<button class="tarjeta" data-a="escaner" style="flex-direction:row;align-items:center;text-align:left"><span class="mini" style="color:var(--acc)">${I.camara}</span><span class="crece"><b>Escáner corporal con IA</b><br><span class="sub">${S.escaneo ? 'Último: ' + fechaCorta(S.escaneo.fecha) + ' · ver o repetir' : 'Una foto y Claude te dice qué músculos tienes más flojos'}</span></span><span class="flecha">${I.derecha}</span></button>`}
+    ${!window.claude || ver ? '' : `<button class="tarjeta" data-a="escaner" style="flex-direction:row;align-items:center;text-align:left"><span class="mini" style="color:var(--acc)">${I.camara}</span><span class="crece"><b>Escáner corporal con IA</b><br><span class="sub">${S.escaneo ? 'Último: ' + fechaCorta(S.escaneo.fecha) + ' · ver o repetir' : 'Una foto y Claude te dice qué músculos tienes más flojos'}</span></span><span class="flecha">${I.derecha}</span></button>`}
     <section><div class="etq" style="margin-bottom:4px">Por músculo</div><div class="lista">
       ${Object.keys(MUSC).sort((a, b) => (r[b]?.t ?? -1) - (r[a]?.t ?? -1)).map(m => `<button class="musculo-fila" data-a="musculo" data-m="${m}">${emblema(r[m]?.t ?? null)}<span><span class="t">${MUSC[m]}</span><div class="prog"><i style="width:${r[m] ? (r[m].t % 1) * 100 : 0}%;background:${colorRango(r[m]?.t)}"></i></div></span><span class="pill" style="color:${r[m] ? colorRango(r[m].t) : 'var(--muted)'}">${nombreRango(r[m]?.t)}</span></button>`).join('')}
     </div></section>
     <p class="sub">El rango compara tu mejor serie de cada ejercicio (fuerza estimada con la fórmula de Epley; en los de peso corporal, las repeticiones) con tu peso corporal de ese día y con un nivel de élite para ese ejercicio. Cada músculo toma la media de sus dos mejores ejercicios.</p>
-  </div>`;
+  ${ver ? '' : '</div>'}`;
 }
 function hojaMusculo(m) {
   const r = rangosMusculo()[m];
@@ -1259,7 +1617,7 @@ function reforzar() {
 
 // ---------- Progreso ----------
 let ejGrafica = null;
-function vistaProgreso() {
+function vistaProgreso(ver = false) {
   const ents = S.entrenos;
   const total = ents.reduce((a, e) => a + volumen(e), 0), series = ents.reduce((a, e) => a + e.ejercicios.reduce((b, x) => b + x.series.length, 0), 0);
   const lun = lunesDe(hoyISO()), semanas = Array.from({ length: 8 }, (_, i) => sumarDias(lun, -7 * (7 - i)));
@@ -1268,8 +1626,7 @@ function vistaProgreso() {
   if (!ejGrafica || !conHist.includes(ejGrafica)) ejGrafica = conHist[0] || null;
   const serie = ejGrafica ? ents.map(e => { const x = e.ejercicios.find(y => y.id === ejGrafica); if (!x) return null; return { f: e.fecha, v: Math.max(...x.series.map(s => e1rm(s.kg || 0, s.reps || 0))) }; }).filter(Boolean) : [];
   const pesos = S.pesos || [];
-  return `<div class="pantalla">
-    <div class="cab"><h1>Progreso</h1></div>
+  return `${ver ? '' : '<div class="pantalla"><div class="cab"><h1>Progreso</h1></div>'}
     <div class="datos3"><div class="dato"><b class="num">${ents.length}</b><span>entrenos</span></div><div class="dato"><b class="num">${series}</b><span>series</span></div><div class="dato"><b class="num">${total >= 10000 ? fmt(total / 1000) + ' t' : fmtMiles(total)}</b><span>${total >= 10000 ? 'movidas' : 'kg movidos'}</span></div></div>
     <section class="tarjeta"><div class="fila entre"><b>Volumen por semana</b><span class="sub">kg × reps</span></div><div class="grafica">${graficaBarras(vol, semanas.map(s => fechaCorta(s)))}</div></section>
     <section class="tarjeta"><b>Fuerza estimada (1RM)</b>
@@ -1277,16 +1634,16 @@ function vistaProgreso() {
     </section>
     <section class="tarjeta"><b>Peso corporal</b>
       ${pesos.length > 1 ? `<div class="grafica">${graficaLinea(pesos.map(p => p.kg), pesos.map(p => fechaCorta(p.fecha)), 'kg')}</div>` : ''}
-      <div class="peso-in"><input id="peso-nuevo" class="num" inputmode="decimal" placeholder="Peso de hoy (kg)" aria-label="Peso de hoy en kilos"><button class="btn btn-blanco" data-a="peso">Apuntar</button></div>
+      ${ver ? (pesos.length ? '' : '<p class="sub">Aún no ha apuntado su peso.</p>') : `<div class="peso-in"><input id="peso-nuevo" class="num" inputmode="decimal" placeholder="Peso de hoy (kg)" aria-label="Peso de hoy en kilos"><button class="btn btn-blanco" data-a="peso">Apuntar</button></div>`}
       ${pesos.length ? `<p class="sub">Último: <b class="num">${fmt(pesos[pesos.length - 1].kg)} kg</b> · ${fechaCorta(pesos[pesos.length - 1].fecha)}</p>` : ''}
     </section>
-    <section class="tarjeta"><div class="fila entre"><b>Fotos de progreso</b><span class="sub">${S.fotos.length}</span></div>
+    ${ver ? '' : `<section class="tarjeta"><div class="fila entre"><b>Fotos de progreso</b><span class="sub">${S.fotos.length}</span></div>
       <div class="fotos"><label class="anadir" for="foto-prog" style="aspect-ratio:3/4;border-radius:12px;display:grid;place-items:center;cursor:pointer;text-align:center;color:var(--muted);font-size:13px;border:1.5px dashed var(--dim)"><span>${I.camara}<br>Añadir</span><input type="file" id="foto-prog" accept="image/*" data-foto-prog style="position:absolute;opacity:0;width:1px;height:1px"></label>${[...S.fotos].reverse().map(f => `<button data-a="ver-foto" data-id="${f.id}"><img src="${f.src}" alt="Foto del ${fechaCorta(f.fecha)}"><small>${fechaCorta(f.fecha)}</small></button>`).join('')}</div>
-    </section>
+    </section>`}
     <section><div class="etq" style="margin-bottom:4px">Historial</div>
-      ${ents.length ? `<div class="lista">${[...ents].reverse().map(e => `<button class="lista-item" data-a="ver-entreno" data-id="${e.id}"><span class="crece"><span class="t">${esc(e.nombre)}</span><br><span class="d num">${fechaCorta(e.fecha)} · ${fmtDur(e.duracion)} · ${e.ejercicios.length} ejercicios · ${fmtMiles(volumen(e))} kg</span></span><span class="flecha">${I.derecha}</span></button>`).join('')}</div>` : '<p class="vacio">Aún no hay entrenos. El primero aparecerá aquí al terminarlo.</p>'}
+      ${ents.length ? `<div class="lista">${[...ents].reverse().map(e => `<button class="lista-item" data-a="ver-entreno" data-id="${e.id}"><span class="crece"><span class="t">${esc(e.nombre)}</span><br><span class="d num">${fechaCorta(e.fecha)} · ${fmtDur(e.duracion)} · ${e.ejercicios.length} ejercicios · ${fmtMiles(volumen(e))} kg</span></span><span class="flecha">${I.derecha}</span></button>`).join('')}</div>` : `<p class="vacio">${ver ? 'Aún no ha hecho ningún entreno.' : 'Aún no hay entrenos. El primero aparecerá aquí al terminarlo.'}</p>`}
     </section>
-  </div>`;
+  ${ver ? '' : '</div>'}`;
 }
 function graficaBarras(v, et) {
   const W = 320, H = 150, pb = 22, max = Math.max(1, ...v), bw = W / v.length;
@@ -1319,7 +1676,7 @@ function hojaEntreno(id) {
   const e = S.entrenos.find(x => x.id === id); if (!e) return;
   hoja(`<h3>${esc(e.nombre)}</h3><p class="sub num">${fechaCorta(e.fecha)} · ${fmtDur(e.duracion)} · ${fmtMiles(volumen(e))} kg</p>
     <div class="lista">${e.ejercicios.map(x => `<div class="lista-item"><span class="mini">${figura(LADO[EJ[x.id].m], coloresEjercicio(EJ[x.id]))}</span><span class="crece"><span class="t">${esc(EJ[x.id].n)}</span><br><span class="d num">${x.series.map(s => (s.kg ? fmt(s.kg, 2) + ' × ' : '') + s.reps).join(' · ')}</span>${x.nota ? `<br><span class="d">${esc(x.nota)}</span>` : ''}</span></div>`).join('')}</div>
-    <div id="borrar-zona"><button class="btn btn-gris" data-a="borrar-entreno" data-id="${e.id}" style="color:var(--bad)">Borrar este entreno</button></div>
+    ${S.ajena ? '' : `<div id="borrar-zona"><button class="btn btn-gris" data-a="borrar-entreno" data-id="${e.id}" style="color:var(--bad)">Borrar este entreno</button></div>`}
     <button class="btn btn-gris" data-a="cerrar">Cerrar</button>`);
 }
 
@@ -1341,18 +1698,147 @@ function vistaPerfil() {
         <label>Duración${sel('duracion', { 45: '45 min', 60: '60 min', 75: '75 min', 90: '90 min' })}</label>
       </div></section>
     <section class="tarjeta"><b>Tu material</b><div class="chips-eq">${TODO_EQUIPO.map(id => `<button class="chip ${p.equipo.includes(id) ? 'on' : ''}" data-a="pf-eq" data-id="${id}">${eqIco(id)}${NOMBRE_EQ[id]}</button>`).join('')}</div></section>
-    <section class="tarjeta" id="rutina"><div class="fila entre"><button class="fila" data-a="plan-nombre" style="gap:8px;text-align:left"><b>Tu rutina · ${esc(S.plan.nombre)}</b><span class="flecha">${I.lapiz.replace('<svg', '<svg width="16" height="16"')}</span></button><span class="pill">${{ ia: 'Hecha por Claude', propia: 'Hecha por ti' }[S.plan.fuente] || 'Plan rápido'}</span></div>
+    ${tarjetaProfesor()}
+    ${seccionRutina()}
+    <button class="tarjeta" data-a="biblioteca" style="flex-direction:row;align-items:center;text-align:left"><span class="mini" style="color:var(--acc)">${I.lapiz.replace('<svg', '<svg width="22" height="22"')}</span><span class="crece"><b>Ejercicios</b><br><span class="sub">${visibles().length} en la lista${Object.values(EJ).some(e => e.propio && !e.oculto) ? ` · ${Object.values(EJ).filter(e => e.propio && !e.oculto).length} tuyos` : ''}. Crea los tuyos o cambia los que hay.</span></span><span class="flecha">${I.derecha}</span></button>
+    ${tarjetaCuenta()}
+    ${lineaEstado()}
+    <div id="reset-zona"><button class="btn btn-gris" data-a="reset" style="color:var(--bad)">Empezar de cero</button></div>
+  </div>`;
+}
+// ---------- Rutina (la de Perfil y la que el profesor monta a una alumna) ----------
+const nombreCorto = n => String(n || '').trim().split(/\s+/)[0] || 'ella';
+function seccionRutina() {
+  const A = S.ajena;
+  const fuente = { ia: 'Hecha por Claude', propia: A ? 'Hecha por ella' : 'Hecha por ti', profesor: A ? 'Enviada por ti' : 'De tu profesor' }[S.plan.fuente] || 'Plan rápido';
+  return `<section class="tarjeta" id="rutina"><div class="fila entre"><button class="fila" data-a="plan-nombre" style="gap:8px;text-align:left"><b>${A ? 'Su' : 'Tu'} rutina · ${esc(S.plan.nombre)}</b><span class="flecha">${I.lapiz.replace('<svg', '<svg width="16" height="16"')}</span></button><span class="pill">${fuente}</span></div>
       <p class="sub">Toca un ejercicio para cambiar series, repeticiones y descanso, moverlo o quitarlo. Con «Editar» cambias el nombre del día, su orden o lo borras.</p>
       ${S.plan.dias.map((d, di) => `<div class="plan-dia"><div class="fila entre"><h4>Día ${di + 1} · ${esc(d.nombre)}</h4><button class="chip" data-a="dia-editar" data-d="${di}" style="height:30px">${I.lapiz}Editar</button></div>${d.ejercicios.map((x, xi) => `<button class="plan-ej" data-a="plan-ej" data-d="${di}" data-i="${xi}"><span>${esc(EJ[x.id].n)}</span><span class="num">${x.series} × ${x.repMin}–${x.repMax}</span></button>`).join('') || '<p class="sub" style="padding:6px 0">Aún sin ejercicios.</p>'}<button class="plan-ej" data-a="plan-add" data-d="${di}" style="color:var(--acc);font-weight:600"><span>+ Añadir ejercicio</span><span></span></button></div>`).join('')}
       ${S.plan.dias.length < MAX_DIAS ? `<button class="btn btn-gris" data-a="dia-nuevo">${I.mas.replace('<svg', '<svg width="18" height="18"')}Añadir un día</button>` : ''}
       <div class="fila"><button class="btn btn-gris" data-a="rehacer">${IA ? 'Rehacer con Claude' : 'Rehacer el plan'}</button><button class="btn btn-gris" data-a="blanco">Empezar en blanco</button></div>
-      <p class="sub">Rehacerla usa tus datos y tu material de arriba; en blanco la montas tú desde cero. Tu historial no se toca en ningún caso.</p>
+      <p class="sub">${A ? 'Rehacerla usa sus datos y su material; en blanco la montas desde cero. Su historial no se toca.' : 'Rehacerla usa tus datos y tu material de arriba; en blanco la montas tú desde cero. Tu historial no se toca en ningún caso.'}</p>
+      ${A ? `<button class="btn btn-blanco" data-a="prof-enviar" ${A.sucio ? '' : 'disabled'}>Enviar a ${esc(nombreCorto(A.nombre))}</button><p class="sub">${A.sucio ? 'Le llega a su teléfono en cuanto tenga conexión y sustituye a la que tiene.' : 'Cuando cambies algo, aquí se lo envías.'} Si después ella la cambia, aquí verás su versión.</p>`
+      : S.plan.fuente === 'profesor' && S.profesor ? `<p class="sub">Te la ha mandado ${esc(S.profesor.nombre)}. Puedes cambiarla; si te manda otra, sustituye a esta.</p>` : ''}
+    </section>`;
+}
+function lineaEstado() {
+  const ok = nube.estado === 'nube' && (!WEB || (navigator.onLine && !nube.sinJuntar && !api?.pendientes && !api?.rechazadas));
+  const t = S.demo ? 'Datos de ejemplo: no se guardan en tu cuenta.'
+    : WEB ? (api?.usuario
+      ? (!navigator.onLine ? 'Sin conexión: todo se guarda en el teléfono y se sube solo cuando vuelva la red.'
+        : nube.estado !== 'nube' ? 'Conectando con tu cuenta…'
+          : S.rol === 'profesor' ? 'Conectado: ves lo que apuntan tus alumnas en cuanto tienen red.'
+            : nube.sinJuntar ? 'Sin conexión con tu cuenta: todo se guarda en el teléfono y se junta cuando haya red.'
+              : api.rechazadas ? 'Lo último no se ha podido guardar en tu cuenta. Lo tienes en este teléfono.'
+                : api.pendientes ? 'Subiendo lo último a tu cuenta…' : 'Guardado en tu cuenta de Google: si cambias de teléfono, no pierdes nada.')
+      : 'Guardado solo en este teléfono. Si borras los datos del navegador, se pierde.')
+      : nube.estado === 'nube' ? 'Guardado en tu cuenta de Claude: lo ves igual en el teléfono y en el ordenador.' : nube.estado === 'conectando' ? 'Conectando con tu cuenta…' : 'Guardado solo en este navegador y este teléfono. Si borras los datos del navegador, se pierde.';
+  return `<div class="estado"><i class="${ok ? 'ok' : ''}"></i>${t}</div>`;
+}
+
+// ---------- Versión web: entrar, elegir rol, profesor ----------
+const GOOGLE = '<svg width="20" height="20" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>';
+// Dentro de Instagram, Facebook o un visor de otra app, Google no deja entrar: hay que abrirla en el navegador
+const DENTRO_DE_APP = /FBAN|FBAV|FB_IAB|Instagram|Line\/|; wv\)/i.test(navigator.userAgent);
+function vistaEntrada() {
+  const prof = S.rolPedido === 'profesor';
+  const puntos = prof ? [['Ves cada entreno', 'según lo van apuntando'], ['Les montas la rutina', 'y les llega al teléfono'], ['También sin conexión', 'se sube cuando vuelve la red']]
+    : [['Tu rutina', 'la que te monta tu profesor'], ['Cuánto poner', 'en cada serie para seguir subiendo'], ['También sin conexión', 'se sube cuando vuelve la red']];
+  return `<div class="ob">
+    <div class="logo">${logoSVG()}<span>tlas</span></div>
+    <div style="display:flex;flex-direction:column;gap:18px;margin-top:10px">${puntos.map(([a, b]) => `<div class="laurel">${laurel(false)}<div><b>${a}</b><span>${b}</span></div>${laurel(true)}</div>`).join('')}</div>
+    <div class="ob-pie">
+      <h1 class="centro" style="font-size:28px">${prof ? 'Sigue a tus alumnas<br>desde el teléfono' : 'Entrena con<br>tu profesor'}</h1>
+      ${DENTRO_DE_APP ? `<div class="aviso-demo" style="flex-direction:column;align-items:flex-start"><span><b>Ábrela en Chrome.</b> Desde dentro de Instagram o Facebook, Google no deja entrar: toca ⋮ (arriba a la derecha) y «Abrir en el navegador».</span><button class="enlace" data-a="copiar" data-t="${esc(location.href)}">Copiar el enlace</button></div>` : ''}
+      <button class="btn btn-blanco" data-a="entrar" style="text-transform:none;letter-spacing:0" ${entrando ? 'disabled' : ''}>${GOOGLE}${entrando ? 'Entrando…' : 'Entrar con Google'}</button>
+      <p class="sub centro" data-estado role="status"></p>
+      ${prof ? `<p class="sub centro">¿Eres alumna? <button class="enlace" data-a="rol" data-v="alumna">Entra por aquí</button></p>` : `<p class="sub centro"><button class="enlace" data-a="sin-cuenta">Usarla sin cuenta</button> · solo en este teléfono, sin profesor</p>`}
+    </div></div>`;
+}
+function vistaRol() {
+  const r = S.rolPedido;
+  return `<div class="ob"><div class="ob-cab"></div><h1>¿Cómo vas a usar Atlas?</h1>
+    <p class="sub" style="margin-top:-12px">Has entrado como ${esc(S.cuenta?.email || S.cuenta?.nombre || '')}.</p>
+    <div class="opciones">${[['alumna', 'Soy alumna', 'Apunto mis entrenos y sigo la rutina de mi profesor'], ['profesor', 'Soy profesor', 'Veo cómo van mis alumnas y les monto la rutina']].map(([v, t, dd]) => `<button class="opcion ${r === v ? 'on' : ''}" data-a="rol" data-v="${v}"><div class="crece"><b>${t}</b><span>${dd}</span></div><span class="marca">${I.checkNegro}</span></button>`).join('')}</div>
+    <div class="ob-pie"><button class="btn btn-blanco" data-a="rol-si" ${r ? '' : 'disabled'}>Continuar</button><p class="sub centro">¿No eres tú? <button class="enlace" data-a="salir">Salir</button></p></div></div>`;
+}
+function tarjetaProfesor() {
+  if (!WEB || S.rol !== 'alumna' || !api?.usuario) return '';
+  if (S.profesor) return `<section class="tarjeta" id="profe"><b>Tu profesor</b><p>Estás conectada con <b>${esc(S.profesor.nombre)}</b>. Ve tus entrenos, tu peso y tus rangos (tus fotos no) y te puede mandar la rutina.</p><div id="desc-zona"><button class="btn btn-gris" data-a="desvincular">Desconectarme</button></div></section>`;
+  return `<section class="tarjeta" id="profe"><b>Tu profesor</b><p class="sub">Escribe el código que te ha dado para que vea cómo vas y te pueda mandar la rutina. Tus fotos no las verá.</p>
+    <div class="peso-in"><input id="codigo-prof" class="num" maxlength="7" autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="Código (6 letras)" aria-label="Código del profesor" value="${esc(S.codigoPend || '')}"><button class="btn btn-blanco" data-a="vincular">Conectar</button></div><p class="sub" data-estado role="status"></p></section>`;
+}
+function tarjetaCuenta() {
+  if (!WEB) return '';
+  if (api?.usuario) return `<section class="tarjeta"><b>Tu cuenta</b><p class="sub">${esc(S.cuenta?.nombre || '')}${S.cuenta?.email ? ' · ' + esc(S.cuenta.email) : ''}</p><div id="salir-zona"><button class="btn btn-gris" data-a="salir">Cerrar sesión</button></div></section>`;
+  return `<section class="tarjeta"><b>${S.uid ? 'Se ha cerrado tu sesión' : 'Guárdalo en tu cuenta'}</b><p class="sub">${S.uid ? 'Entra otra vez para que lo que apuntes siga subiendo.' : 'Entra con Google para no perder nada si cambias de teléfono y para conectarte con tu profesor.'}</p><button class="btn btn-blanco" data-a="entrar" style="text-transform:none;letter-spacing:0">${GOOGLE}Entrar con Google</button><p class="sub" data-estado role="status"></p></section>`;
+}
+function hojaVincular(c) {
+  hoja(`<h3>Conectar con tu profesor</h3><p data-quien>Te han invitado con el código <b class="num">${esc(c)}</b>.</p>
+    <p class="sub">Tu profesor verá tus entrenos, tu peso y tus rangos, y te podrá mandar la rutina. Tus fotos no las verá. Puedes desconectarte cuando quieras desde Perfil.</p>
+    <p class="sub" data-estado role="status"></p>
+    <button class="btn btn-blanco" data-a="vincular" data-c="${esc(c)}">Conectar</button><button class="btn btn-gris" data-a="vincular-no">Ahora no</button>`);
+  api?.leerCodigo(c).then(n => { const q = $('.hoja [data-quien]'); if (n && q) q.innerHTML = `<b>${esc(n)}</b> te invita a conectarte en Atlas.`; }).catch(() => { });
+}
+function vistaProfesor() {
+  const l = [...(S.alumnas || [])].sort((a, b) => sinTildes(a.nombre).localeCompare(sinTildes(b.nombre)));
+  const enlace = location.origin + location.pathname + (S.codigo ? '?codigo=' + S.codigo : '');
+  const invit = `Hola, entra en Atlas con este enlace para que vea tus entrenos y te monte la rutina: ${enlace}`;
+  return `<div class="pantalla">
+    <div class="cab"><div class="marca-mini">${logoSVG()}Atlas · Profesor</div></div>
+    <section class="tarjeta"><b>Tu código</b>
+      ${S.codigo ? `<div class="codigo num">${S.codigo.slice(0, 3)} ${S.codigo.slice(3)}</div>
+        <p class="sub">Tus alumnas lo escriben en su Perfil, o abren tu enlace, para conectarse contigo.</p>
+        <a class="btn btn-blanco" style="text-decoration:none;text-transform:none;letter-spacing:0" href="https://wa.me/?text=${encodeURIComponent(invit)}" target="_blank" rel="noopener">Invitar por WhatsApp</a>
+        <div class="fila"><button class="btn btn-gris" data-a="copiar" data-t="${esc(invit)}">Copiar invitación</button><button class="btn btn-gris" data-a="codigo-nuevo">Cambiar código</button></div>`
+      : `<p class="sub">${creandoCodigo ? 'Creando tu código…' : navigator.onLine ? 'Aún no tienes código.' : 'Sin conexión: tu código se crea cuando tengas red.'}</p><button class="btn btn-blanco" data-a="codigo-nuevo" ${creandoCodigo ? 'disabled' : ''}>Crear mi código</button>`}
     </section>
-    <button class="tarjeta" data-a="biblioteca" style="flex-direction:row;align-items:center;text-align:left"><span class="mini" style="color:var(--acc)">${I.lapiz.replace('<svg', '<svg width="22" height="22"')}</span><span class="crece"><b>Ejercicios</b><br><span class="sub">${visibles().length} en la lista${Object.values(EJ).some(e => e.propio && !e.oculto) ? ` · ${Object.values(EJ).filter(e => e.propio && !e.oculto).length} tuyos` : ''}. Crea los tuyos o cambia los que hay.</span></span><span class="flecha">${I.derecha}</span></button>
-    <div class="estado"><i class="${nube.estado === 'nube' ? 'ok' : ''}"></i>${S.demo ? 'Datos de ejemplo: no se guardan en tu cuenta.' : nube.estado === 'nube' ? 'Guardado en tu cuenta de Claude: lo ves igual en el móvil y en el ordenador.' : nube.estado === 'conectando' ? 'Conectando con tu cuenta…' : 'Guardado solo en este navegador y este móvil. Si borras los datos del navegador, se pierde.'}</div>
-    <div id="reset-zona"><button class="btn btn-gris" data-a="reset" style="color:var(--bad)">Empezar de cero</button></div>
+    <section><div class="etq" style="margin-bottom:4px">Tus alumnas · ${l.length}</div>
+      ${l.length ? `<div class="lista">${l.map(filaAlumna).join('')}</div>` : '<p class="vacio">Cuando una alumna se conecte con tu código, aparecerá aquí.</p>'}
+    </section>
+    ${tarjetaCuenta()}
+    ${lineaEstado()}
   </div>`;
 }
+function filaAlumna(a) {
+  const r = a.resumen || {}, lun = lunesDe(hoyISO());
+  const semana = r.lunes === lun ? (r.semanas?.[7] || 0) : 0;
+  const dias = r.ultimo ? Math.round((Date.parse(hoyISO()) - Date.parse(r.ultimo)) / 864e5) : null;
+  const cuando = dias == null ? 'Aún no ha entrenado' : dias <= 0 ? 'Entrenó hoy' : dias === 1 ? 'Entrenó ayer' : `Lleva ${dias} días sin entrenar`;
+  const env = S.envios?.[a.uid];
+  const envio = env ? `<br><span class="d" style="${env.error ? 'color:var(--bad)' : ''}">${env.error ? 'La rutina no se pudo enviar' : 'Rutina pendiente de envío'}</span>` : '';
+  return `<button class="lista-item" data-a="ver-alumna" data-id="${esc(a.uid)}">${emblema(r.rango ?? null, 'width="34" height="38"')}<span class="crece"><span class="t">${esc(a.nombre)}</span><br><span class="d" style="${dias == null || dias > 7 ? 'color:var(--bad)' : ''}">${cuando}</span><br><span class="d num">${semana}/${r.dias || '–'} esta semana${r.rutina ? ' · ' + esc(r.rutina) : ''}</span>${envio}</span><span class="flecha">${I.derecha}</span></button>`;
+}
+// El profesor mirando a una alumna (S es el estado de ella, de solo lectura salvo la rutina)
+function vistaAlumnaProf() {
+  const A = S.ajena, tab = A.tab || 'resumen';
+  const cab = `<div class="cab" style="justify-content:flex-start"><button class="ob-atras" data-a="prof-volver" aria-label="Volver a tus alumnas">${I.atras}</button><h1 class="crece" style="font-size:24px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(A.nombre)}</h1></div>`;
+  const pest = `<div class="segmento ancho">${[['resumen', 'Resumen'], ['rutina', 'Rutina'], ['progreso', 'Progreso'], ['rangos', 'Rangos']].map(([k, n]) => `<button class="${tab === k ? 'on' : ''}" data-a="ptab" data-v="${k}">${n}</button>`).join('')}</div>`;
+  const aviso = A.envio === 'error' ? `<div class="aviso-demo"><span><b>No se ha podido enviar la rutina.</b> Sigue aquí: revísala y envíala otra vez.</span><button class="enlace" data-a="prof-enviar">Enviar</button></div>`
+    : A.sucio ? `<div class="aviso-demo"><span>Has cambiado su rutina y aún no se la has enviado.</span><button class="enlace" data-a="prof-enviar">Enviar</button></div>`
+      : A.envio === 'enviando' ? `<div class="aviso-demo"><span>${navigator.onLine ? 'Enviando la rutina…' : 'Rutina pendiente de envío: sale sola cuando vuelva la red.'}</span></div>` : '';
+  const cuerpo = A.cargando ? `<p class="vacio">${navigator.onLine ? 'Cargando sus datos…' : 'Sin conexión: sus datos se cargan cuando vuelva la red.'}</p>`
+    : tab === 'rutina' ? seccionRutina() : tab === 'progreso' ? vistaProgreso(true) : tab === 'rangos' ? vistaRangos(true) : resumenProf();
+  return `<div class="pantalla">${cab}${pest}${aviso}${cuerpo}</div>`;
+}
+function resumenProf() {
+  const A = S.ajena, p = S.perfil, hoy = hoyISO(), lun = lunesDe(hoy), fechas = new Set(S.entrenos.map(e => e.fecha));
+  const estaSemana = S.entrenos.filter(e => e.fecha >= lun).length, ult = S.entrenos[S.entrenos.length - 1];
+  const semanas = Array.from({ length: 8 }, (_, i) => sumarDias(lun, -7 * (7 - i)));
+  const porSemana = semanas.map(s => S.entrenos.filter(e => lunesDe(e.fecha) === s).length);
+  const dias = ult ? Math.round((Date.parse(hoy) - Date.parse(ult.fecha)) / 864e5) : null;
+  const pesos = S.pesos || [];
+  return `${A.enCurso ? `<div class="aviso-demo"><span><b>Entrenando ahora</b> · ${esc(A.enCurso.nombre)}</span></div>` : ''}
+    ${A.sinPerfil ? '<p class="sub">Aún no ha terminado de rellenar sus datos. Ya puedes montarle la rutina.</p>'
+      : `<div class="chips-eq">${[OBJ[p.objetivo], NIVEL[p.nivel], p.edad + ' años', fmt(pesoCorporal()) + ' kg', p.altura + ' cm', p.dias + ' días por semana'].map(t => `<span class="chip">${esc(t)}</span>`).join('')}</div>`}
+    <div class="semana">${['L', 'M', 'X', 'J', 'V', 'S', 'D'].map((l, i) => { const f = sumarDias(lun, i); return `<div class="dia ${f === hoy ? 'hoy' : ''} ${fechas.has(f) ? 'hecho' : ''}">${l}<b class="num">${+f.slice(8)}</b><i></i></div>`; }).join('')}</div>
+    <div class="datos3"><div class="dato"><b class="num">${estaSemana}/${p.dias}</b><span>esta semana</span></div><div class="dato"><b class="num">${S.entrenos.length}</b><span>entrenos</span></div><div class="dato"><b class="num">${dias == null ? '–' : dias}</b><span>${dias === 1 ? 'día sin entrenar' : 'días sin entrenar'}</span></div></div>
+    <section class="tarjeta"><div class="fila entre"><b>Entrenos por semana</b><span class="sub">últimas 8</span></div><div class="grafica">${graficaBarras(porSemana, semanas.map(fechaCorta))}</div></section>
+    ${pesos.length > 1 ? `<section class="tarjeta"><b>Peso corporal</b><div class="grafica">${graficaLinea(pesos.map(x => x.kg), pesos.map(x => fechaCorta(x.fecha)), 'kg')}</div></section>` : ''}
+    ${ult ? `<section><div class="etq" style="margin-bottom:6px">Último entreno</div><button class="lista-item" data-a="ver-entreno" data-id="${esc(ult.id)}"><span class="crece"><span class="t">${esc(ult.nombre)}</span><br><span class="d">${fechaCorta(ult.fecha)} · ${fmtDur(ult.duracion)} · ${fmtMiles(volumen(ult))} kg</span></span><span class="flecha">${I.derecha}</span></button></section>` : '<p class="vacio">Aún no ha hecho ningún entreno.</p>'}
+    <div id="soltar-zona"><button class="btn btn-gris" data-a="prof-soltar" style="color:var(--bad)">Dejar de seguir a ${esc(nombreCorto(A.nombre))}</button></div>`;
+}
+
 // ---------- Rutina propia: días ----------
 const MAX_DIAS = 10;
 const planEnBlanco = n => ({ nombre: 'Mi rutina', fuente: 'propia', nota: '', dias: Array.from({ length: n }, (_, i) => ({ nombre: `Día ${i + 1}`, ejercicios: [] })) });
@@ -1373,7 +1859,7 @@ function hojaBlanco(n = clamp(S.perfil?.dias || 3, 1, 7)) {
     <p class="sub">Luego puedes añadir o quitar días cuando quieras.</p>
     <button class="btn btn-blanco" data-a="blanco-si" data-n="${n}">Empezar en blanco</button><button class="btn btn-gris" data-a="cerrar">Cancelar</button>`);
 }
-function irARutina() { vista = 'perfil'; try { localStorage.setItem(LS + '-vista', vista); } catch (e) { } pintar(); $('#rutina')?.scrollIntoView({ block: 'start' }); }
+function irARutina() { if (S.ajena) { S.ajena.tab = 'rutina'; pintar(); $('#rutina')?.scrollIntoView({ block: 'start' }); return; } vista = 'perfil'; try { localStorage.setItem(LS + '-vista', vista); } catch (e) { } pintar(); $('#rutina')?.scrollIntoView({ block: 'start' }); }
 
 function hojaPlanEj(di, xi) {
   const x = S.plan.dias[di].ejercicios[xi], ex = EJ[x.id];
@@ -1548,7 +2034,7 @@ function comprimir(file, lado = 720) {
 // ---------- Datos de ejemplo ----------
 function cargarDemo() {
   const p = { sexo: 'hombre', edad: 27, peso: 74, altura: 178, objetivo: 'musculo', nivel: 'intermedio', dias: 4, duracion: 60, equipo: [...TODO_EQUIPO] };
-  S = estadoVacio(); S.demo = true; S.perfil = { ...p, creado: sumarDias(hoyISO(), -42) };
+  S = estadoLimpio(); S.demo = true; S.perfil = { ...p, creado: sumarDias(hoyISO(), -42) };
   S.plan = planLocal(p); S.plan.nota = 'Plan de ejemplo.';
   let semilla = 7; const azar = () => (semilla = (semilla * 16807) % 2147483647) / 2147483647;
   const fuerza = { pecho: 0.62, dorsales: 0.58, hombros: 0.5, biceps: 0.55, triceps: 0.52, cuadriceps: 0.6, femorales: 0.42, gluteos: 0.48, gemelos: 0.3, abdomen: 0.5, trapecio: 0.55, lumbares: 0.5, antebrazos: 0.4 };
@@ -1575,12 +2061,18 @@ function cargarDemo() {
 }
 
 // ---------- Eventos ----------
+// Lo que puede hacer un profesor mientras mira a una alumna: su rutina y mirar
+const ACC_AJENA = new Set(['cerrar', 'nada', 'musculo', 'ver-entreno', 'plan-ej', 'plan-guardar', 'plan-mover', 'plan-quitar', 'plan-cambiar', 'plan-add', 'filtro', 'elegir-ej',
+  'biblioteca', 'ej-nuevo', 'ej-editar', 'ej-editar-suelto', 'ej-sec', 'ej-eq', 'ej-guardar', 'ej-original', 'ej-quitar', 'ej-quitar-si', 'ej-volver', 'ej-mostrar',
+  'ir-rutina', 'plan-nombre', 'plan-nombre-si', 'dia-editar', 'dia-guardar', 'dia-mover', 'dia-duplicar', 'dia-borrar', 'dia-borrar-si', 'dia-nuevo',
+  'blanco', 'blanco-n', 'blanco-si', 'rehacer', 'rehacer-si', 'ptab', 'prof-volver', 'prof-salir-sin', 'prof-enviar', 'prof-soltar', 'prof-soltar-si']);
 document.addEventListener('click', async e => {
   const parte = e.target.closest('.mapa [data-m]');
   if (parte && parte.dataset.m) { hojaMusculo(parte.dataset.m); return; }
   const t = e.target.closest('[data-a]'); if (!t) return;
   const a = t.dataset.a, d = t.dataset;
   const p = S.ob?.p;
+  if (S.ajena && !ACC_AJENA.has(a)) return;
   switch (a) {
     case 'ob-sig': {
       const paso = PASOS[S.ob.paso];
@@ -1595,7 +2087,7 @@ document.addEventListener('click', async e => {
     case 'ob-eq': { const l = borradorPerfil().equipo, i = l.indexOf(d.id); i >= 0 ? l.splice(i, 1) : l.push(d.id); break; }
     case 'ob-grupo': { const pp = borradorPerfil(), ids = EQUIPO[d.g].map(x => x[0]), todos = ids.every(id => pp.equipo.includes(id)); pp.equipo = todos ? pp.equipo.filter(x => !ids.includes(x)) : [...new Set([...pp.equipo, ...ids])]; break; }
     case 'demo': cargarDemo(); return;
-    case 'salir-demo': { const uid = S.uid; S = estadoVacio(); S.uid = uid; chat = []; guardarLocal(); pintar(); conectar(); return; }
+    case 'salir-demo': { S = estadoLimpio(); chat = []; guardarLocal(); pintar(); conectar(); return; }
     case 'tab': vista = d.v; try { localStorage.setItem(LS + '-vista', vista); } catch (er) { } window.scrollTo(0, 0); break;
     case 'empezar': if (!S.activo) empezar(+d.d); return;
     case 'abrir-entreno': entrenoAbierto = true; break;
@@ -1706,8 +2198,89 @@ document.addEventListener('click', async e => {
       gen++; clearTimeout(tGuardar); tGuardar = null;
       const ref = nube.ref, ids = S.entrenos.map(x => x.id), fs = S.fotos.map(f => f.id), uid = S.uid;
       if (ref && !S.demo) colaNube = colaNube.then(async () => { for (const id of ids) await ref.collection('entrenos').doc(id).delete(); for (const id of fs) await ref.collection('fotos').doc(id).delete(); await ref.delete(); }).catch(fallo);
-      S = estadoVacio(); S.uid = uid; chat = []; guardarLocal(); break;
+      S = estadoLimpio(); chat = []; guardarLocal(); break;
     }
+    // ---- Versión web: cuenta, rol y profesor ----
+    case 'entrar': {
+      const est = t.parentElement?.querySelector('[data-estado]');
+      if (!api) { toast(navigator.onLine ? 'Un momento, aún está cargando. Prueba otra vez en unos segundos.' : 'Necesitas conexión para entrar.'); return; }
+      t.disabled = true; if (est) est.textContent = 'Abriendo Google…';
+      marcarEntrando(true); // por si Google abre en esta misma página y vuelve
+      try { await api.entrar(); if (est) est.textContent = ''; }
+      catch (er) {
+        t.disabled = false; marcarEntrando(false);
+        const m = ['auth/popup-closed-by-user', 'auth/cancelled-popup-request', 'auth/user-cancelled'].includes(er?.code) ? '' : er?.code === 'auth/network-request-failed' ? 'Sin conexión. Prueba cuando tengas red.' : 'No se ha podido entrar. Prueba otra vez.';
+        if (est) est.textContent = m; else if (m) toast(m);
+      }
+      return;
+    }
+    case 'sin-cuenta': S.sinCuenta = true; S.rol = 'alumna'; break;
+    case 'rol': S.rolPedido = d.v; break;
+    case 'rol-si': {
+      const r = S.rolPedido; if (!r || !api?.usuario) return;
+      S.rol = r; S.cuenta = { nombre: api.usuario.nombre, email: api.usuario.email };
+      api.guardarCuenta({ rol: r, nombre: api.usuario.nombre, email: api.usuario.email, creada: hoyISO() });
+      guardarLocal(); pintar(); arrancarRol(genWeb); return;
+    }
+    case 'salir': {
+      if (!api?.usuario) return;
+      t.disabled = true;
+      if (tGuardar) { clearTimeout(tGuardar); subirPerfil(); }
+      saliendo = true;
+      try { await colaNube; const limpio = await api.salir(); if (!limpio) try { localStorage.setItem(LS + '-limpiar', '1'); } catch (e) { } }
+      catch (er) {
+        t.disabled = false; saliendo = false;
+        if (er?.code === 'pendiente') { t.parentElement.innerHTML = `<p class="sub">Hay cosas que aún no han subido porque no hay conexión. Si cierras la sesión ahora, se pierden.</p><div class="fila" style="margin-top:8px"><button class="btn btn-gris" data-a="nada">Esperar</button><button class="btn btn-blanco" data-a="salir-si" style="background:var(--bad);color:#fff">Salir igualmente</button></div>`; return; }
+        toast('No se ha podido cerrar la sesión. Prueba otra vez.'); return;
+      }
+      despuesDeSalir(); return;
+    }
+    case 'salir-si': saliendo = true; try { if (!await api.salir({ forzar: true })) localStorage.setItem(LS + '-limpiar', '1'); } catch (er) { console.warn(er); } despuesDeSalir(); return;
+    case 'recargar': location.reload(); return;
+    case 'nada': break;
+    case 'vincular': {
+      const c = d.c || $('#codigo-prof')?.value || '', est = t.closest('.hoja, .tarjeta')?.querySelector('[data-estado]');
+      const decir = m => { if (est) est.textContent = m; else toast(m); };
+      if (!navigator.onLine) { decir('Necesitas conexión para conectarte con tu profesor.'); return; }
+      t.disabled = true; decir('Comprobando el código…');
+      try {
+        const p = await api.vincular(c);
+        S.profesor = { id: p.id, nombre: p.nombre }; S.codigoPend = null; S.rutinaPend = null; guardarLocal(); cerrarHoja(); ultResumen = ''; tocarResumen();
+        toast(p.pendiente ? `Se ha cortado la red: te conectas con ${p.nombre} en cuanto vuelva` : `Conectada con ${p.nombre}`);
+        if (ultimaRutina) recibirRutina(ultimaRutina);
+      } catch (er) {
+        t.disabled = false;
+        decir({ 'codigo-mal': 'El código son 6 letras o números. Revísalo.', 'no-existe': 'Ese código no existe. Pídeselo otra vez a tu profesor.', propio: 'Ese código es el tuyo.', 'sin-red': 'Sin conexión. Prueba cuando tengas red.' }[er?.code] || 'No ha salido. Prueba otra vez.');
+        return;
+      }
+      break;
+    }
+    case 'vincular-no': S.codigoPend = null; guardarLocal(); cerrarHoja(); break;
+    case 'desvincular': $('#desc-zona').innerHTML = `<p class="sub">Deja de ver tus datos y de poder mandarte la rutina. La rutina que tienes se queda.</p><div class="fila" style="margin-top:8px"><button class="btn btn-gris" data-a="nada">No</button><button class="btn btn-blanco" data-a="desvincular-si" style="background:var(--bad);color:#fff">Desconectarme</button></div>`; return;
+    case 'desvincular-si': {
+      t.disabled = true;
+      let hecho;
+      try { hecho = await api.desvincular(); } catch (er) { t.disabled = false; toast('No se ha podido desconectar. Prueba otra vez.'); return; }
+      api.borrarRutinaRecibida(); S.profesor = null; S.rutinaPend = null; guardarLocal();
+      if (hecho) toast('Desconectada: tu profesor ya no ve tus datos');
+      else { pintar(); hoja(`<h3>Desconexión pendiente</h3><p class="sub">No hay conexión. Te desconectas en cuanto vuelva la red; hasta entonces, tu profesor aún puede ver tus datos.</p><button class="btn btn-gris" data-a="cerrar">Entendido</button>`); return; }
+      break;
+    }
+    case 'codigo-nuevo': crearCodigoProf(); return;
+    case 'copiar': {
+      try { await navigator.clipboard.writeText(d.t); toast('Copiada: pégala donde quieras'); }
+      catch (er) { hoja(`<h3>Tu invitación</h3><p class="sub">Cópiala y mándasela a tus alumnas.</p><textarea readonly>${esc(d.t)}</textarea><button class="btn btn-gris" data-a="cerrar">Cerrar</button>`); }
+      return;
+    }
+    case 'ver-alumna': abrirAlumna(d.id); return;
+    case 'ptab': S.ajena.tab = d.v; window.scrollTo(0, 0); break;
+    case 'prof-volver':
+      if (S.ajena.sucio) { hoja(`<h3>No le has enviado los cambios</h3><p class="sub">Has cambiado la rutina de ${esc(nombreCorto(S.ajena.nombre))} y aún no se la has enviado.</p><button class="btn btn-blanco" data-a="prof-enviar" data-salir="1">Enviar y volver</button><button class="btn btn-gris" data-a="prof-salir-sin" style="color:var(--bad)">Volver sin enviar</button><button class="btn btn-gris" data-a="cerrar">Seguir aquí</button>`); return; }
+      salirDeAlumna(); return;
+    case 'prof-salir-sin': salirDeAlumna(); return;
+    case 'prof-enviar': enviarRutina(); if (d.salir) { salirDeAlumna(); return; } cerrarHoja(); break;
+    case 'prof-soltar': $('#soltar-zona').innerHTML = `<p class="sub">Desaparece de tu lista y dejas de ver sus datos. Para volver, tendría que conectarse otra vez con tu código.</p><div class="fila" style="margin-top:8px"><button class="btn btn-gris" data-a="nada">No</button><button class="btn btn-blanco" data-a="prof-soltar-si" style="background:var(--bad);color:#fff">Dejar de seguirla</button></div>`; return;
+    case 'prof-soltar-si': { const A = S.ajena; api.soltarAlumna(A.uid); salirDeAlumna(); toast(`Ya no sigues a ${nombreCorto(A.nombre)}`); return; }
     default: return;
   }
   if (S.ob?.paso < 99) guardarLocal();
@@ -1758,5 +2331,6 @@ pintar();
 conectar();
 </script>
 
+<script>if ('serviceWorker' in navigator) addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => { }));</script>
 </body>
 </html>
