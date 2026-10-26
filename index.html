@@ -175,6 +175,9 @@ p{margin:0}
 .e-cab .crono{font-size:20px;font-weight:700;flex:1}
 .ic-btn{width:38px;height:38px;display:grid;place-items:center;border-radius:10px}
 .ic-btn svg{width:22px;height:22px}
+.ic-btn.escucha{background:var(--acc);color:#fff;animation:latido 1.2s ease-in-out infinite}
+@keyframes latido{50%{transform:scale(1.08)}}
+.voz-aviso{margin:0 16px 10px;padding:10px 12px;border-radius:12px;background:var(--s2);font-size:14px;color:var(--fg)}
 .btn-fin{height:38px;padding:0 16px;border-radius:10px;border:1px solid var(--line);background:var(--s1);font-weight:600}
 .carrusel{display:flex;gap:14px;overflow-x:auto;padding:6px 16px 10px;scrollbar-width:none}
 .carrusel::-webkit-scrollbar{display:none}
@@ -350,6 +353,8 @@ const I = {
   abajo: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>',
   crono: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="13.5" r="7.5"/><path d="M12 13.5V10M10 3h4M18.5 6.5l1.5-1.5"/></svg>',
   play: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l12-7.5z"/></svg>',
+  micro: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0013 0M12 17.5V21"/></svg>',
+  calendario: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="5" width="16" height="15" rx="2.5"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>',
   cambiar: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h13l-3-3M20 15H7l3 3"/></svg>',
   lapiz: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20l4-1L19 8l-3-3L5 16z"/></svg>',
   chispa: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 2.5l1.7 5.3 5.3 1.7-5.3 1.7L10 16.5l-1.7-5.3L3 9.5l5.3-1.7zM18 13l.9 2.6 2.6.9-2.6.9L18 20l-.9-2.6-2.6-.9 2.6-.9z"/></svg>',
@@ -1504,12 +1509,13 @@ function vistaEntreno() {
   const rest = a.descansoFin ? Math.max(0, (a.descansoFin - Date.now()) / 1000) : 0;
   const kgPh = sug.kg == null ? (CORPORAL(ex.t) ? '+0' : '0') : fmt(aUdA(sug.kg), 2);
   return `<div class="entreno" role="dialog" aria-label="Entreno en curso"><div class="entreno-in">
-    <div class="e-cab"><button class="ic-btn" data-a="minimizar" aria-label="Minimizar">${I.abajo}</button><span class="crono num" data-crono>${fmtDur((Date.now() - a.inicio) / 1000)}</span><button class="ic-btn" data-a="descanso-ya" aria-label="Empezar descanso">${I.crono}</button><button class="btn-fin" data-a="finalizar">Finalizar</button></div>
+    <div class="e-cab"><button class="ic-btn" data-a="minimizar" aria-label="Minimizar">${I.abajo}</button><span class="crono num" data-crono>${fmtDur((Date.now() - a.inicio) / 1000)}</span>${VOZ ? `<button class="ic-btn ${escuchando ? 'escucha' : ''}" data-a="voz" aria-label="${escuchando ? 'Dejar de escuchar' : 'Apuntar con la voz'}">${I.micro}</button>` : ''}<button class="ic-btn" data-a="descanso-ya" aria-label="Empezar descanso">${I.crono}</button><button class="btn-fin" data-a="finalizar">Finalizar</button></div>
+    ${escuchando ? '<div class="voz-aviso" role="status">Te escucho… di, por ejemplo, «50 por 12», «siguiente» o «descanso»</div>' : ''}
     <div class="carrusel">${a.ejercicios.map((y, i) => { const e2 = EJ[y.id]; return `<button class="circulo ${i === a.idx ? 'on' : ''}" data-a="ir" data-i="${i}" aria-label="${esc(e2.n)}">${figura(LADO[e2.m], coloresEjercicio(e2))}${hechas(y) ? `<span class="ok">${I.check}</span>` : ''}</button>`; }).join('')}<button class="circulo mas" data-a="anadir-ej" aria-label="Añadir ejercicio">+</button></div>
     <div class="e-fig">${figura(LADO[ex.m], coloresEjercicio(ex))}<div class="equipo-tag">${ex.eq.slice(0, 3).map(e => `<span title="${NOMBRE_EQ[e]}">${eqIco(e)}</span>`).join('')}</div><span class="lado">${a.idx + 1} de ${a.ejercicios.length}</span></div>
     <div class="e-info"><h2>${esc(ex.n)}</h2><p class="sub">${x.nota ? esc(x.nota) : esc(ex.tip)}</p>
       <p class="sub">Objetivo: <b class="num">${x.series.length} × ${x.obj.repMin}–${x.obj.repMax}</b>${u ? ` · Última vez: <b class="num">${u.series.map(s => (s.kg ? fmt(aUdA(s.kg), 2) + '×' : '') + s.reps).join('  ')}</b>` : ''}</p></div>
-    <div class="chips"><button class="chip" data-a="tutorial">${I.play}Tutorial</button><button class="chip" data-a="cambiar">${I.cambiar}Cambiar</button><button class="chip" data-a="notas">${I.lapiz}Notas</button><button class="chip" data-a="t-descanso">${I.crono}${x.descanso >= 60 ? (x.descanso / 60).toString().replace('.', ',') + ' min' : x.descanso + ' s'}</button></div>
+    <div class="chips"><button class="chip" data-a="e-fecha" aria-label="Fecha del entreno">${I.calendario}${fechaActivo() === hoyISO() ? 'Hoy' : fechaCorta(fechaActivo())}</button><button class="chip" data-a="tutorial">${I.play}Tutorial</button><button class="chip" data-a="cambiar">${I.cambiar}Cambiar</button><button class="chip" data-a="notas">${I.lapiz}Notas</button><button class="chip" data-a="t-descanso">${I.crono}${x.descanso >= 60 ? (x.descanso / 60).toString().replace('.', ',') + ' min' : x.descanso + ' s'}</button></div>
     <div class="tabla">
       <div class="t-cab"><span>SERIE</span><span>${(CORPORAL(ex.t) ? '+' : '') + udA().toUpperCase()}</span><span>REPS</span><button class="chispa" data-a="chispa" aria-label="Rellenar con la carga sugerida">${I.chispa}</button></div>
       ${x.series.map((s, i) => `<div class="t-fila ${s.hecho ? 'hecha' : ''}"><span class="n num">${i + 1}</span><input class="num" inputmode="decimal" data-in="kg" data-s="${i}" placeholder="${kgPh}" value="${s.kg === '' || s.kg == null ? '' : fmt(s.kg, 2)}" aria-label="Peso serie ${i + 1}, en ${udA() === 'lb' ? 'libras' : 'kilos'}"><input class="num" inputmode="numeric" data-in="reps" data-s="${i}" placeholder="${sug.reps}" value="${s.reps === '' || s.reps == null ? '' : s.reps}" aria-label="Repeticiones serie ${i + 1}"><button class="check" data-a="hecho" data-s="${i}" aria-label="Serie hecha">${I.check}</button></div>`).join('')}
@@ -1523,6 +1529,113 @@ function vistaEntreno() {
   </div>`;
 }
 function iniciarDescanso(seg) { const a = S.activo; a.descansoFin = Date.now() + seg * 1000; a.descansoTotal = seg; guardar(); pintar(); }
+// Marca (o desmarca) una serie del ejercicio que se ve. Devuelve si ha quedado hecha.
+function marcarSerie(i) {
+  const x = ejActual(), s = x.series[i];
+  if (s.hecho) { s.hecho = false; guardar(); pintar(); return false; }
+  const sug = sugerir(x.id, x.obj, x.series.length);
+  const kg = s.kg === '' || s.kg == null ? (aUdA(sug.kg) ?? 0) : num(s.kg), reps = s.reps === '' || s.reps == null ? sug.reps : num(s.reps);
+  if (kg == null || kg < 0 || kg > (udA() === 'lb' ? 2200 : 1000)) { toast(`Revisa el peso de la serie ${i + 1}`); pintar(); return false; }
+  if (reps == null || reps < 1 || reps > 200 || reps % 1) { toast(`Pon cuántas repeticiones hiciste en la serie ${i + 1}`); pintar(); return false; }
+  s.kg = kg; s.reps = reps; s.hecho = true;
+  const pendientes = x.series.some(y => !y.hecho);
+  if (pendientes || S.activo.idx < S.activo.ejercicios.length - 1) iniciarDescanso(x.descanso); else { guardar(); pintar(); }
+  return true;
+}
+function preguntarFin() {
+  const n = S.activo.ejercicios.reduce((k, x) => k + x.series.filter(s => s.hecho).length, 0);
+  hoja(`<h3>¿Terminar el entreno?</h3><p class="sub">${n ? `Llevas ${n} series hechas. Las que no hayas marcado no se guardan.` : 'No has marcado ninguna serie, así que no se guardará nada.'}</p>${n ? `<button class="btn btn-blanco" data-a="fin-si">Terminar y guardar</button>` : ''}<button class="btn btn-gris" data-a="cerrar">Seguir entrenando</button><button class="btn btn-gris" data-a="fin-descartar" style="color:var(--bad)">Descartar el entreno</button>`);
+}
+
+// ---------- Fechas: un entreno puede apuntarse en otro día (si se olvidó apuntarlo) ----------
+const fechaElegible = f => typeof f === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(f) && f >= '2000-01-01' && f <= hoyISO();
+const fechaActivo = (a = S.activo) => fechaElegible(a?.fecha) ? a.fecha : hoyISO(new Date(a?.inicio || Date.now()));
+const ordenEntrenos = (x, y) => x.fecha.localeCompare(y.fecha) || (x.inicio || 0) - (y.inicio || 0);
+const hojaFecha = (titulo, texto, valor, accion, id = '') => hoja(`<h3>${titulo}</h3><p class="sub">${texto}</p><div class="form"><label>Fecha<input type="date" id="fecha-nueva" value="${valor}" min="2000-01-01" max="${hoyISO()}"></label></div><button class="btn btn-blanco" data-a="${accion}" data-id="${id}">Guardar la fecha</button><button class="btn btn-gris" data-a="cerrar">Cancelar</button>`);
+
+// ---------- Voz: apuntar la serie sin tocar el teléfono ----------
+// Usa el reconocimiento de voz del navegador (Chrome en Android, Safari en iPhone). Necesita internet:
+// sin red avisa y se apunta a mano como siempre.
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+const VOZ = !!SR;
+let escuchando = false, reco = null;
+const NUM_PAL = { un: 1, uno: 1, una: 1, dos: 2, tres: 3, cuatro: 4, cinco: 5, seis: 6, siete: 7, ocho: 8, nueve: 9, diez: 10, once: 11, doce: 12, trece: 13, catorce: 14, quince: 15, dieciseis: 16, diecisiete: 17, dieciocho: 18, diecinueve: 19, veinte: 20, veintiun: 21, veintiuno: 21, veintidos: 22, veintitres: 23, veinticuatro: 24, veinticinco: 25, veintiseis: 26, veintisiete: 27, veintiocho: 28, veintinueve: 29, treinta: 30, cuarenta: 40, cincuenta: 50, sesenta: 60, setenta: 70, ochenta: 80, noventa: 90, cien: 100, ciento: 100, doscientos: 200, doscientas: 200, trescientos: 300, trescientas: 300 };
+const UD_PAL = { kilo: 'kg', kilos: 'kg', kg: 'kg', kgs: 'kg', kilogramo: 'kg', kilogramos: 'kg', libra: 'lb', libras: 'lb', lb: 'lb', lbs: 'lb', rep: 'reps', reps: 'reps', repeticion: 'reps', repeticiones: 'reps', veces: 'reps' };
+// Lo que ha dicho → qué hacer: { tipo: 'serie', peso, ud, reps } o una orden ('siguiente', 'anterior', 'descanso', 'terminar', 'mas-serie', 'deshacer'), o null
+function leerVoz(texto) {
+  const t = sinTildes(texto).replace(/(\d),(\d)/g, '$1.$2').replace(/(\d)\s*[x×*]\s*(\d)/g, '$1 por $2');
+  const p = t.split(/[^a-z0-9.]+/).filter(Boolean), n = [];
+  for (let i = 0; i < p.length; i++) {
+    const w = p[i]; let v = /^\d+(\.\d+)?$/.test(w) ? +w : NUM_PAL[w];
+    if (v == null) {
+      // «diez kilos y medio»: el medio va al número de antes de la unidad
+      if (/^medi[oa]$/.test(w) && n[n.length - 1]?.w === 'y' && ['kg', 'lb'].includes(UD_PAL[n[n.length - 2]?.w]) && n[n.length - 3]?.v != null) { n[n.length - 3].v += 0.5; n.pop(); continue; }
+      n.push({ w }); continue;
+    }
+    const nx = NUM_PAL[p[i + 1]] ?? (/^\d+$/.test(p[i + 1] || '') ? +p[i + 1] : null);
+    if (v >= 100 && v % 100 === 0 && nx != null && nx < 100) { i++; v += nx; } // «ciento veinte»
+    if (v >= 20 && v % 10 === 0 && v < 100 && p[i + 1] === 'y' && NUM_PAL[p[i + 2]] < 10) { v += NUM_PAL[p[i + 2]]; i += 2; }
+    if (p[i + 1] === 'y' && /^medi[oa]$/.test(p[i + 2] || '')) { v += 0.5; i += 2; }
+    n.push({ v });
+  }
+  const nums = n.filter(x => x.v != null);
+  if (!nums.length) {
+    if (/\b(deshacer|desmarca|quita la ultima|borra la ultima)/.test(t)) return { tipo: 'deshacer' };
+    if (/\b(otra serie|mas serie|nueva serie|anade (una )?serie|agrega (una )?serie)/.test(t)) return { tipo: 'mas-serie' };
+    if (/\b(siguiente|proximo|pasa)\b/.test(t)) return { tipo: 'siguiente' };
+    if (/\b(anterior|atras)\b/.test(t)) return { tipo: 'anterior' };
+    if (/\bdescans/.test(t)) return { tipo: 'descanso' };
+    if (/\b(termin|finaliz|acab)/.test(t)) return { tipo: 'terminar' };
+    return null;
+  }
+  const r = { tipo: 'serie', peso: null, ud: null, reps: null }, sueltos = [];
+  n.forEach((x, i) => {
+    if (x.v == null) return;
+    const sig = UD_PAL[n[i + 1]?.w], ant = n[i - 1]?.w;
+    if (sig === 'reps' && r.reps == null) r.reps = x.v;
+    else if ((sig === 'kg' || sig === 'lb') && r.peso == null) { r.peso = x.v; r.ud = sig; }
+    else if (ant === 'con' && r.peso == null) r.peso = x.v;
+    else sueltos.push(x.v);
+  });
+  if (r.peso == null && r.reps == null && sueltos.length >= 2) { r.peso = sueltos[0]; r.reps = sueltos[1]; }
+  else if (sueltos.length) { if (r.reps == null) r.reps = sueltos[0]; else if (r.peso == null) r.peso = sueltos[0]; }
+  return r.peso == null && r.reps == null ? null : r;
+}
+function aplicarVoz(dichos) {
+  if (!S.activo) return;
+  let r = null;
+  for (const d of dichos) if ((r = leerVoz(d))) break;
+  if (!r) { toast(`No te he entendido («${dichos[0] || ''}»). Prueba con «50 por 12»`); return; }
+  const a = S.activo, x = ejActual();
+  if (r.tipo === 'siguiente') { if (a.idx < a.ejercicios.length - 1) { a.idx++; guardar(); pintar(); toast(EJ[ejActual().id].n); } else toast('Es el último ejercicio: di «terminar»'); return; }
+  if (r.tipo === 'anterior') { if (a.idx > 0) { a.idx--; guardar(); pintar(); toast(EJ[ejActual().id].n); } return; }
+  if (r.tipo === 'descanso') { iniciarDescanso(x.descanso); return; }
+  if (r.tipo === 'terminar') { preguntarFin(); return; }
+  if (r.tipo === 'mas-serie') { const u = x.series[x.series.length - 1]; x.series.push({ kg: u?.kg ?? '', reps: u?.reps ?? '', hecho: false }); guardar(); pintar(); toast('Serie añadida'); return; }
+  if (r.tipo === 'deshacer') { const i = x.series.map(s => s.hecho).lastIndexOf(true); if (i >= 0) { x.series[i].hecho = false; guardar(); pintar(); toast(`Serie ${i + 1} sin marcar`); } return; }
+  let i = x.series.findIndex(s => !s.hecho);
+  if (i < 0) { const u = x.series[x.series.length - 1]; x.series.push({ kg: u?.kg ?? '', reps: '', hecho: false }); i = x.series.length - 1; }
+  const s = x.series[i];
+  if (r.peso != null) s.kg = r.ud && r.ud !== udA() ? redondo(aUd(deUd(r.peso, r.ud), udA()), udA() === 'lb' ? 1 : 2) : r.peso;
+  if (r.reps != null) s.reps = r.reps;
+  if (marcarSerie(i)) toast(`Serie ${i + 1}: ${s.kg ? fmt(s.kg, 2) + ' ' + udA() + ' × ' : ''}${s.reps} ✓`);
+}
+function escuchar() {
+  if (escuchando) { try { reco?.abort(); } catch (e) { } escuchando = false; pintar(); return; }
+  if (!navigator.onLine) { toast('La voz necesita internet. Sin red, apúntalo a mano'); return; }
+  const r = new SR(); reco = r;
+  r.lang = /^es/i.test(navigator.language || '') ? navigator.language : 'es-ES';
+  r.interimResults = false; r.maxAlternatives = 3;
+  let dicho = false;
+  r.onresult = ev => { dicho = true; aplicarVoz([...ev.results[0]].map(x => x.transcript)); };
+  r.onerror = ev => {
+    const m = { 'not-allowed': 'Permite el micrófono para apuntar con la voz', 'service-not-allowed': 'Permite el micrófono para apuntar con la voz', network: 'La voz necesita internet. Sin red, apúntalo a mano', 'audio-capture': 'No encuentro el micrófono' }[ev.error];
+    if (m) { dicho = true; toast(m); }
+  };
+  r.onend = () => { if (reco !== r) return; escuchando = false; reco = null; if (!dicho) toast('No te he oído. Pulsa el micro y habla'); pintar(); };
+  try { r.start(); escuchando = true; } catch (e) { reco = null; toast('No se ha podido usar el micrófono'); }
+  pintar();
+}
 
 // Reloj: actualiza el cronómetro y el descanso sin repintar
 setInterval(() => {
@@ -1543,10 +1656,11 @@ function finalizar(descartar) {
   const def = id => { const e = EJ[id]; return e?.propio && !e.fantasma ? { def: { n: e.n, m: e.m, s: e.s, eq: e.eq, t: e.t } } : {}; };
   const ejercicios = a.ejercicios.map(x => ({ id: x.id, ...def(x.id), nota: x.nota, series: x.series.filter(s => s.hecho && num(s.reps) > 0).map(s => ({ kg: +deUd(num(s.kg) || 0, a.ud || 'kg').toFixed(4), reps: Math.round(num(s.reps) || 0), hecho: true })) })).filter(x => x.series.length);
   S.activo = null; entrenoAbierto = false;
+  if (escuchando) { try { reco?.abort(); } catch (er) { } escuchando = false; }
   if (descartar || !ejercicios.length) { guardar(); pintar(); toast('Entreno descartado'); return; }
   const mejAntes = mejoresPorEjercicio();
-  const e = { id: a.id, fecha: hoyISO(new Date(a.inicio)), inicio: a.inicio, duracion: Math.round((Date.now() - a.inicio) / 1000), diaIdx: a.diaIdx, nombre: a.nombre, bw: pesoCorporal(), ejercicios };
-  S.entrenos.push(e); guardarEntreno(e); guardar();
+  const e = { id: a.id, fecha: fechaActivo(a), inicio: a.inicio, duracion: Math.round((Date.now() - a.inicio) / 1000), diaIdx: a.diaIdx, nombre: a.nombre, bw: pesoCorporal(), ejercicios };
+  S.entrenos.push(e); S.entrenos.sort(ordenEntrenos); guardarEntreno(e); guardar();
   const despues = rangosMusculo(), mejDesp = mejoresPorEjercicio();
   const records = Object.keys(mejDesp).filter(id => ejercicios.some(x => x.id === id) && (!mejAntes[id] || mejDesp[id].p > mejAntes[id].p + 1e-9) && mejAntes[id]);
   const subidas = Object.keys(MUSC).filter(m => despues[m] && (!antes[m] || Math.floor(despues[m].t) > Math.floor(antes[m].t)));
@@ -1695,6 +1809,7 @@ function hojaEntreno(id) {
   const e = S.entrenos.find(x => x.id === id); if (!e) return;
   hoja(`<h3>${esc(e.nombre)}</h3><p class="sub num">${fechaCorta(e.fecha)} · ${fmtDur(e.duracion)} · ${fVolumen(volumen(e))} ${UD()}</p>
     <div class="lista">${e.ejercicios.map(x => `<div class="lista-item"><span class="mini">${figura(LADO[EJ[x.id].m], coloresEjercicio(EJ[x.id]))}</span><span class="crece"><span class="t">${esc(EJ[x.id].n)}</span><br><span class="d num">${x.series.map(s => (s.kg ? fCarga(s.kg, 2) + ' × ' : '') + s.reps).join(' · ')}</span>${x.nota ? `<br><span class="d">${esc(x.nota)}</span>` : ''}</span></div>`).join('')}</div>
+    ${S.ajena ? '' : `<button class="btn btn-gris" data-a="entreno-fecha" data-id="${e.id}">${I.calendario.replace('<svg', '<svg width="18" height="18"')}Cambiar la fecha</button>`}
     ${S.ajena ? '' : `<div id="borrar-zona"><button class="btn btn-gris" data-a="borrar-entreno" data-id="${e.id}" style="color:var(--bad)">Borrar este entreno</button></div>`}
     <button class="btn btn-gris" data-a="cerrar">Cerrar</button>`);
 }
@@ -2123,17 +2238,16 @@ document.addEventListener('click', async e => {
     case 'abrir-entreno': entrenoAbierto = true; break;
     case 'minimizar': entrenoAbierto = false; break;
     case 'ir': S.activo.idx = +d.i; guardar(); pintar(); $('.entreno')?.scrollTo(0, 0); return;
-    case 'hecho': {
-      const x = ejActual(), s = x.series[+d.s];
-      if (s.hecho) { s.hecho = false; guardar(); break; }
-      const sug = sugerir(x.id, x.obj, x.series.length);
-      const kg = s.kg === '' || s.kg == null ? (aUdA(sug.kg) ?? 0) : num(s.kg), reps = s.reps === '' || s.reps == null ? sug.reps : num(s.reps);
-      if (kg == null || kg < 0 || kg > (udA() === 'lb' ? 2200 : 1000)) { toast(`Revisa el peso de la serie ${+d.s + 1}`); return; }
-      if (reps == null || reps < 1 || reps > 200 || reps % 1) { toast(`Pon cuántas repeticiones hiciste en la serie ${+d.s + 1}`); return; }
-      s.kg = kg; s.reps = reps; s.hecho = true;
-      const pendientes = x.series.some(y => !y.hecho);
-      if (pendientes || S.activo.idx < S.activo.ejercicios.length - 1) iniciarDescanso(x.descanso); else { guardar(); pintar(); }
-      return;
+    case 'hecho': marcarSerie(+d.s); return;
+    case 'voz': escuchar(); return;
+    case 'e-fecha': hojaFecha('Fecha del entreno', 'Si apuntas un entreno de otro día, elige cuándo lo hiciste.', fechaActivo(), 'e-fecha-si'); return;
+    case 'e-fecha-si': { const v = $('#fecha-nueva').value; if (!fechaElegible(v)) { toast('Elige un día de hoy hacia atrás'); return; } S.activo.fecha = v; guardar(); cerrarHoja(); break; }
+    case 'entreno-fecha': { const e2 = S.entrenos.find(x => x.id === d.id); if (e2) hojaFecha('Cambiar la fecha', esc(e2.nombre), e2.fecha, 'entreno-fecha-si', e2.id); return; }
+    case 'entreno-fecha-si': {
+      const v = $('#fecha-nueva').value, e2 = S.entrenos.find(x => x.id === d.id);
+      if (!fechaElegible(v)) { toast('Elige un día de hoy hacia atrás'); return; }
+      if (e2 && e2.fecha !== v) { e2.fecha = v; S.entrenos.sort(ordenEntrenos); guardarEntreno(e2); toast(`Movido al ${fechaCorta(v)}`); }
+      cerrarHoja(); break;
     }
     case 'chispa': { const x = ejActual(), sug = sugerir(x.id, x.obj, x.series.length); for (const s of x.series) if (!s.hecho) { s.kg = aUdA(sug.kg) ?? ''; s.reps = sug.reps; } S.activo.rec[x.id] = 1; guardar(); break; }
     case 'mas-serie': { const x = ejActual(), u = x.series[x.series.length - 1]; x.series.push({ kg: u?.kg ?? '', reps: u?.reps ?? '', hecho: false }); guardar(); break; }
@@ -2148,11 +2262,7 @@ document.addEventListener('click', async e => {
     case 'anadir-ej': busq = ''; filtroM = 'todos'; hojaSelector('anadir', {}); return;
     case 'notas': { const x = ejActual(); hoja(`<h3>Notas</h3><p class="sub">${esc(EJ[x.id].n)}: ajuste del asiento, agarre, sensaciones…</p><textarea id="nota-texto" placeholder="Por ejemplo: asiento en el 4, agarre ancho">${esc(x.nota)}</textarea><button class="btn btn-blanco" data-a="nota-guardar">Guardar nota</button>`); return; }
     case 'nota-guardar': ejActual().nota = $('#nota-texto').value.trim(); guardar(); cerrarHoja(); break;
-    case 'finalizar': {
-      const n = S.activo.ejercicios.reduce((k, x) => k + x.series.filter(s => s.hecho).length, 0);
-      hoja(`<h3>¿Terminar el entreno?</h3><p class="sub">${n ? `Llevas ${n} series hechas. Las que no hayas marcado no se guardan.` : 'No has marcado ninguna serie, así que no se guardará nada.'}</p>${n ? `<button class="btn btn-blanco" data-a="fin-si">Terminar y guardar</button>` : ''}<button class="btn btn-gris" data-a="cerrar">Seguir entrenando</button><button class="btn btn-gris" data-a="fin-descartar" style="color:var(--bad)">Descartar el entreno</button>`);
-      return;
-    }
+    case 'finalizar': preguntarFin(); return;
     case 'fin-si': cerrarHoja(); finalizar(false); return;
     case 'fin-descartar': cerrarHoja(); finalizar(true); return;
     case 'cerrar': cerrarHoja(); return;
