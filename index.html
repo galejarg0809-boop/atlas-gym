@@ -266,8 +266,8 @@ p{margin:0}
 
 /* Perfil */
 .form{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.form label{display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--muted);font-weight:600}
-.form input,.form select{height:44px;border-radius:12px;border:0;background:var(--s2);padding:0 12px;font-size:15px}
+.form label{display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--muted);font-weight:600;min-width:0}
+.form input,.form select{height:44px;border-radius:12px;border:0;background:var(--s2);padding:0 12px;font-size:15px;width:100%;min-width:0}
 .chips-eq{display:flex;flex-wrap:wrap;gap:8px}
 .chips-eq .chip{background:var(--s2);color:var(--muted)}
 .chips-eq .chip.on{background:var(--fg);color:#000}
@@ -318,6 +318,7 @@ const num = v => { const t = String(v ?? '').trim().replace(',', '.'); return /^
 const LIM = { edad: [12, 90], peso: [30, 250], altura: [120, 230] };
 const fmt = (n, d = 1) => n == null ? '' : (Math.round(n * 10 ** d) / 10 ** d).toString().replace('.', ',');
 const fmtMiles = n => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+const sinTildes = t => String(t ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const hoyISO = (d = new Date()) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 const nuevoId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -481,11 +482,92 @@ const BIB = [
   ['gemelo_pie', 'Elevación de gemelos de pie', 'gemelos', [], ['maquinas'], 'q', 2.5, 'Baja el talón del todo y sube a puntillas.'],
   ['gemelo_sentado', 'Gemelo sentado', 'gemelos', [], ['maquinas'], 'q', 1.8, 'Pausa abajo un segundo.'],
   ['gemelo_mancuerna', 'Gemelo a una pierna con mancuerna', 'gemelos', [], ['mancuernas'], 'm', 0.6, 'Apoya la punta en un escalón.'],
+  // Ampliación del 26/10/2026
+  ['press_declinado', 'Press declinado con barra', 'pecho', ['triceps'], ['barra', 'banco'], 'b', 1.9, 'Pies bien sujetos; la barra baja a la parte baja del pecho.'],
+  ['press_inclinado_maquina', 'Press inclinado en máquina', 'pecho', ['hombros', 'triceps'], ['maquinas'], 'q', 1.4, 'Espalda pegada al respaldo; empuja hacia arriba y adelante.'],
+  ['aperturas_mancuernas', 'Aperturas con mancuernas', 'pecho', ['hombros'], ['mancuernas', 'banco'], 'm', 0.4, 'Codos algo flexionados y fijos; abre hasta notar el estiramiento.'],
+  ['cruce_polea_baja', 'Cruce de poleas de abajo arriba', 'pecho', ['hombros'], ['poleas'], 'q', 0.35, 'Peso de cada lado. Sube en arco hasta la altura de la barbilla.'],
+  ['dominadas_supinas', 'Dominadas supinas', 'dorsales', ['biceps'], ['barra_dominadas'], 'c', 25, 'Palmas hacia ti, al ancho de los hombros.'],
+  ['jalon_cerrado', 'Jalón con agarre estrecho', 'dorsales', ['biceps'], ['poleas'], 'q', 1.4, 'Lleva el agarre al pecho sin echarte atrás.'],
+  ['remo_t', 'Remo en T', 'dorsales', ['trapecio', 'biceps', 'lumbares'], ['barra'], 'b', 1.4, 'Espalda neutra; tira hacia el abdomen.'],
+  ['remo_polea_unilateral', 'Remo en polea a una mano', 'dorsales', ['trapecio', 'biceps'], ['poleas'], 'q', 0.7, 'Gira un poco el torso al estirar y tira con el codo.'],
+  ['pullover_mancuerna', 'Pullover con mancuerna', 'dorsales', ['pecho', 'triceps'], ['mancuernas', 'banco'], 'k', 0.6, 'Una mancuerna con las dos manos; baja por detrás de la cabeza.'],
+  ['encogimientos_maquina', 'Encogimientos en máquina', 'trapecio', ['antebrazos'], ['maquinas'], 'q', 2.0, 'Sube recto y aguanta un segundo arriba.'],
+  ['press_arnold', 'Press Arnold', 'hombros', ['triceps'], ['mancuernas', 'banco'], 'm', 0.45, 'Empieza con las palmas hacia ti y gíralas al subir.'],
+  ['elevaciones_frontales', 'Elevaciones frontales', 'hombros', [], ['mancuernas'], 'm', 0.3, 'Sube hasta la altura de los ojos sin balancearte.'],
+  ['laterales_maquina', 'Elevación lateral en máquina', 'hombros', [], ['maquinas'], 'q', 0.7, 'Empuja con los codos, no con las manos.'],
+  ['pajaros_polea', 'Pájaros en polea', 'hombros', ['trapecio'], ['poleas'], 'q', 0.25, 'Cables cruzados; abre los brazos hacia atrás.'],
+  ['remo_menton', 'Remo al mentón', 'hombros', ['trapecio'], ['barra'], 'b', 0.8, 'Agarre algo más ancho que los hombros; codos por encima de las manos.'],
+  ['curl_barra_z', 'Curl con barra Z', 'biceps', ['antebrazos'], ['barra'], 'b', 0.85, 'Codos quietos; baja del todo.'],
+  ['curl_concentrado', 'Curl concentrado', 'biceps', [], ['mancuernas', 'banco'], 'm', 0.35, 'Codo apoyado en el muslo; aprieta arriba.'],
+  ['curl_bayesiano', 'Curl bayesiano en polea', 'biceps', [], ['poleas'], 'q', 0.35, 'De espaldas a la polea, con el brazo por detrás del cuerpo.'],
+  ['curl_maquina', 'Curl de bíceps en máquina', 'biceps', [], ['maquinas'], 'q', 0.8, 'Codos alineados con el eje de la máquina.'],
+  ['pushdown_cuerda', 'Extensión de tríceps con cuerda', 'triceps', [], ['poleas'], 'q', 0.9, 'Separa la cuerda abajo del todo.'],
+  ['extension_unilateral_polea', 'Extensión de tríceps a una mano en polea', 'triceps', [], ['poleas'], 'q', 0.4, 'Codo pegado; estira del todo.'],
+  ['patada_triceps', 'Patada de tríceps', 'triceps', [], ['mancuernas', 'banco'], 'm', 0.25, 'Brazo pegado al cuerpo; estira hacia atrás.'],
+  ['fondos_maquina', 'Fondos en máquina', 'triceps', ['pecho'], ['maquinas'], 'q', 1.6, 'Codos hacia atrás; baja hasta 90°.'],
+  ['flexiones_diamante', 'Flexiones diamante', 'triceps', ['pecho'], [], 'c', 40, 'Manos juntas bajo el pecho; codos pegados.'],
+  ['curl_muneca_inverso', 'Curl de muñeca inverso', 'antebrazos', [], ['mancuernas'], 'm', 0.3, 'Palmas hacia abajo; mueve solo la muñeca.'],
+  ['crunch_maquina', 'Crunch en máquina', 'abdomen', [], ['maquinas'], 'q', 1.0, 'Enrolla el tronco; no tires con los brazos.'],
+  ['elevacion_piernas_suelo', 'Elevación de piernas tumbado', 'abdomen', [], [], 'c', 40, 'Lumbar pegada al suelo; baja despacio.'],
+  ['rueda_abdominal', 'Rueda abdominal', 'abdomen', ['lumbares'], [], 'c', 25, 'De rodillas; avanza solo hasta donde no se te hunda la cadera.'],
+  ['plancha', 'Plancha', 'abdomen', ['lumbares'], [], 'c', 120, 'Apunta los segundos en la columna de REPS.'],
+  ['buenos_dias', 'Buenos días con barra', 'lumbares', ['femorales', 'gluteos'], ['barra', 'rack'], 'b', 1.2, 'Rodillas algo flexionadas; cadera atrás con la espalda recta.'],
+  ['sentadilla_frontal', 'Sentadilla frontal', 'cuadriceps', ['gluteos', 'abdomen'], ['barra', 'rack'], 'b', 2.0, 'Codos altos; la barra descansa en los hombros.'],
+  ['sentadilla_hack', 'Sentadilla hack en máquina', 'cuadriceps', ['gluteos'], ['maquinas'], 'q', 3.0, 'Espalda pegada al respaldo; baja hondo.'],
+  ['step_up', 'Subida al banco', 'cuadriceps', ['gluteos'], ['mancuernas', 'banco'], 'm', 0.5, 'Empuja con el pie de arriba, sin impulsarte con el de abajo.'],
+  ['aductores', 'Aductores en máquina', 'cuadriceps', ['gluteos'], ['maquinas'], 'q', 1.6, 'Cierra despacio y aguanta un segundo.'],
+  ['sentadilla_sumo', 'Sentadilla sumo con mancuerna', 'cuadriceps', ['gluteos'], ['mancuernas'], 'k', 0.8, 'Pies abiertos y puntas hacia fuera.'],
+  ['curl_femoral_sentado', 'Curl femoral sentado', 'femorales', [], ['maquinas'], 'q', 1.1, 'Ajusta el rodillo encima de los tobillos.'],
+  ['peso_muerto_sumo', 'Peso muerto sumo', 'gluteos', ['cuadriceps', 'femorales', 'lumbares'], ['barra'], 'b', 2.8, 'Pies muy abiertos; agarre por dentro de las piernas.'],
+  ['hip_thrust_maquina', 'Hip thrust en máquina', 'gluteos', ['femorales'], ['maquinas'], 'q', 2.5, 'Barbilla al pecho; aprieta arriba.'],
+  ['gemelo_prensa', 'Gemelos en prensa', 'gemelos', [], ['prensa'], 'q', 3.5, 'Solo la punta en la plataforma; recorrido completo.'],
 ];
-const EJ = {};
-for (const [id, n, m, s, eq, t, el, tip] of BIB) EJ[id] = { id, n, m, s, eq, t, el, tip };
 const CORPORAL = t => t === 'c' || t === 'n';
 const INC = { b: 2.5, m: 1, k: 2, q: 2.5 };
+// Cómo se apunta el peso de cada ejercicio (el tipo t de la biblioteca)
+const TIPOS = { b: 'Barra (kg totales)', m: 'Mancuernas (kg de cada una)', k: 'Una sola pesa', q: 'Máquina o polea', c: 'Peso corporal', n: 'Banda elástica' };
+
+// Los ejercicios de cada uno: S.ejercicios guarda, por id, los propios (propio: true, completos) y los
+// cambios a los de la biblioteca (solo lo cambiado). oculto: true lo saca de las listas, pero sigue
+// existiendo para que el historial y un entreno en curso no se rompan.
+const EJ = {};
+function elDefecto(m, t) {
+  const media = l => l.length ? l.reduce((a, b) => a + b[6], 0) / l.length : null;
+  return media(BIB.filter(b => b[2] === m && b[5] === t)) ?? media(BIB.filter(b => b[5] === t)) ?? 1;
+}
+function rehacerEJ() {
+  for (const k in EJ) delete EJ[k];
+  for (const [id, n, m, s, eq, t, el, tip] of BIB) EJ[id] = { id, n, m, s, eq, t, el, tip };
+  const propios = S?.ejercicios && typeof S.ejercicios === 'object' ? S.ejercicios : {};
+  for (const [id, c] of Object.entries(propios)) {
+    const base = EJ[id];
+    if (!c || typeof c !== 'object' || (!base && !c.propio)) continue;
+    const e = { ...(base || {}), ...c, id };
+    e.n = String(e.n || '').trim().slice(0, 60) || base?.n || 'Ejercicio';
+    if (!MUSC[e.m]) e.m = base?.m || 'pecho';
+    if (!TIPOS[e.t]) e.t = base?.t || 'q';
+    e.s = (Array.isArray(e.s) ? e.s : []).filter(x => MUSC[x] && x !== e.m);
+    e.eq = (Array.isArray(e.eq) ? e.eq : []).filter(x => NOMBRE_EQ[x]);
+    e.tip = String(e.tip || '').slice(0, 300);
+    e.el = base && e.t === base.t ? base.el : elDefecto(e.m, e.t); // el nivel de élite no se edita: sale del tipo y del músculo
+    e.cambiado = !!base;
+    EJ[id] = e;
+  }
+  // Ejercicios del historial o del entreno en curso que este aparato no conoce (creados en otro móvil
+  // cuya lista no llegó): se rehacen con la copia que lleva el entreno; si no la hay, uno «fantasma»
+  // que no cuenta para los rangos, para que nada se rompa.
+  const deEntrenos = [...(S?.entrenos || []), ...(S?.activo ? [S.activo] : [])];
+  for (const e of deEntrenos) for (const x of e.ejercicios || []) {
+    if (!x?.id || EJ[x.id]) continue;
+    const d = x.def && MUSC[x.def.m] && TIPOS[x.def.t] ? x.def : null;
+    EJ[x.id] = d ? { id: x.id, n: String(d.n || 'Ejercicio').slice(0, 60), m: d.m, s: (d.s || []).filter(y => MUSC[y]), eq: (d.eq || []).filter(y => NOMBRE_EQ[y]), t: d.t, el: elDefecto(d.m, d.t), tip: '', propio: true, oculto: true }
+      : { id: x.id, n: 'Ejercicio borrado', m: 'pecho', s: [], eq: [], t: 'q', el: 1, tip: '', oculto: true, fantasma: true };
+  }
+  // Un ejercicio que ya no existe (por ejemplo, borrado en otro aparato) sale de la rutina
+  if (S?.plan?.dias) for (const d of S.plan.dias) d.ejercicios = (d.ejercicios || []).filter(x => EJ[x.id] && !EJ[x.id].fantasma);
+}
+const visibles = () => Object.values(EJ).filter(e => !e.oculto);
 
 const EQUIPO = {
   'Calistenia': [['barra_dominadas', 'Barra de dominadas'], ['paralelas', 'Paralelas'], ['trx', 'TRX'], ['bandas', 'Bandas elásticas']],
@@ -516,7 +598,7 @@ const colorRango = t => t == null ? 'var(--body)' : TIERS[Math.floor(t / 3)][1];
 function mejoresPorEjercicio(entrenos = S.entrenos) {
   const mej = {};
   for (const e of entrenos) for (const x of e.ejercicios) {
-    const ex = EJ[x.id]; if (!ex) continue;
+    const ex = EJ[x.id]; if (!ex || ex.fantasma) continue;
     for (const s of x.series) {
       if (!s.hecho || !(s.reps > 0)) continue;
       const p = puntuacion(ex, s.kg || 0, s.reps, e.bw || pesoCorporal());
@@ -564,10 +646,11 @@ function emblema(t, extra = '') {
 // al conectar gana la copia con el `rev` más alto, y los entrenos y las fotos se juntan por id
 // (lo borrado se recuerda en `borrados` para que no vuelva). `gen` invalida lo pendiente al borrar todo.
 const LS = 'atlas-gym-v1';
-function estadoVacio() { return { perfil: null, plan: null, entrenos: [], pesos: [], fotos: [], escaneo: null, activo: null, demo: false, ob: { paso: 0, slide: 0 }, rev: 0, borrados: [], uid: null }; }
+function estadoVacio() { return { perfil: null, plan: null, entrenos: [], pesos: [], fotos: [], escaneo: null, activo: null, demo: false, ob: { paso: 0, slide: 0 }, rev: 0, borrados: [], uid: null, ejercicios: {} }; }
 let S = estadoVacio();
 try { const g = JSON.parse(localStorage.getItem(LS) || 'null'); if (g) S = { ...S, ...g }; } catch (e) { }
 function activoValido() {
+  rehacerEJ();
   const a = S.activo;
   if (a && !(Array.isArray(a.ejercicios) && a.ejercicios.length && a.ejercicios.every(x => EJ[x.id] && Array.isArray(x.series)))) S.activo = null;
   if (S.activo) S.activo.idx = clamp(S.activo.idx | 0, 0, S.activo.ejercicios.length - 1);
@@ -589,7 +672,7 @@ function guardarLocal() {
   } catch (e2) { if (!avisoLocal) { avisoLocal = true; toast('No se ha podido guardar en este móvil: no cierres la app hasta liberar espacio.'); } }
 }
 let tGuardar = null, colaNube = Promise.resolve(), gen = 0;
-const cuerpoPerfil = () => JSON.parse(JSON.stringify({ perfil: S.perfil, plan: S.plan, pesos: S.pesos, escaneo: S.escaneo, activo: S.activo, ob: S.ob, rev: S.rev, borrados: S.borrados, v: 2 }));
+const cuerpoPerfil = () => JSON.parse(JSON.stringify({ perfil: S.perfil, plan: S.plan, pesos: S.pesos, escaneo: S.escaneo, activo: S.activo, ob: S.ob, rev: S.rev, borrados: S.borrados, ejercicios: S.ejercicios || {}, v: 3 }));
 // Quien abre el enlace sin permiso para escribir en la cuenta (visitantes de fuera) guarda solo en su navegador
 function fallo(e) {
   console.warn('No se pudo guardar en la cuenta', e);
@@ -638,6 +721,7 @@ async function conectar() {
           const usarLocal = !!S.perfil && (!d?.perfil || (S.rev || 0) > (d.rev || 0));
           S = {
             ...S, ...(usarLocal || !d?.perfil ? {} : d), uid, demo: false, borrados: [...borr].slice(-500),
+            ejercicios: usarLocal || !d?.perfil ? { ...(d?.ejercicios || {}), ...(S.ejercicios || {}) } : { ...(S.ejercicios || {}), ...(d.ejercicios || {}) },
             entrenos: juntar(remE, S.entrenos, 'e:').sort((a, b) => a.fecha.localeCompare(b.fecha) || (a.inicio || 0) - (b.inicio || 0)),
             fotos: juntar(remF, S.fotos, 'f:').sort((a, b) => a.fecha.localeCompare(b.fecha)),
           };
@@ -741,8 +825,8 @@ const NIVEL = { principiante: 'Principiante', intermedio: 'Intermedio', avanzado
 
 async function planConIA(p) {
   if (!IA) return null;
-  const permitidos = BIB.filter(b => disponible(EJ[b[0]], p.equipo));
-  const lista = permitidos.map(b => `${b[0]} | ${b[1]} | ${MUSC[b[2]]}`).join('\n');
+  const permitidos = visibles().filter(e => disponible(e, p.equipo));
+  const lista = permitidos.map(e => `${e.id} | ${e.n} | ${MUSC[e.m]}`).join('\n');
   const maxEj = { 45: 5, 60: 6, 75: 7, 90: 8 }[p.duracion] || 6;
   const prompt = `Eres un entrenador personal con experiencia en hipertrofia y fuerza. Diseña un plan semanal de gimnasio para esta persona.
 
@@ -764,7 +848,7 @@ Responde solo con JSON con esta forma:
 {"nombre":"Torso / Pierna","nota":"dos frases en español explicando por qué este plan le va bien","dias":[{"nombre":"Torso A","ejercicios":[{"id":"press_banca","series":4,"repMin":6,"repMax":10,"descanso":150}]}]}`;
   const r = await IA.json(prompt, { modelTier: 'default' });
   if (!r || !Array.isArray(r.dias)) return null;
-  const ok = new Set(permitidos.map(b => b[0]));
+  const ok = new Set(permitidos.map(e => e.id));
   const dias = r.dias.slice(0, p.dias).map(d => {
     const usados = new Set();
     const ej = (Array.isArray(d.ejercicios) ? d.ejercicios : []).filter(x => ok.has(x?.id) && !usados.has(x.id) && usados.add(x.id)).map(x => {
@@ -835,6 +919,7 @@ function ejActual() { return S.activo.ejercicios[S.activo.idx]; }
 // ---------- Pintado ----------
 const app = $('#app');
 function pintar() {
+  rehacerEJ();
   if (esperandoCuenta) { app.innerHTML = '<p class="vacio" style="padding-top:40vh">Cargando…</p>'; return; }
   if (!S.perfil || !S.plan || S.ob.paso < 99) { app.innerHTML = vistaOnboarding(); montarOnboarding(); return; }
   let h = '';
@@ -875,7 +960,7 @@ function vistaOnboarding() {
     <div style="display:flex;justify-content:flex-end"><span class="chip" style="height:30px">ES</span></div>
     <div class="logo">${logoSVG()}<span>tlas</span></div>
     <div style="display:flex;flex-direction:column;gap:18px;margin-top:10px">
-      ${[['66 ejercicios', 'cada uno con su rango'], ['21 rangos', 'de Hierro III a Campeón I'], ['Plan a tu medida', 'según tu material y tus días']].map(([a, b]) => `<div class="laurel">${laurel(false)}<div><b>${a}</b><span>${b}</span></div>${laurel(true)}</div>`).join('')}
+      ${[[`${BIB.length} ejercicios`, 'y los que tú añadas'], ['21 rangos', 'de Hierro III a Campeón I'], ['Plan a tu medida', 'según tu material y tus días']].map(([a, b]) => `<div class="laurel">${laurel(false)}<div><b>${a}</b><span>${b}</span></div>${laurel(true)}</div>`).join('')}
     </div>
     <div class="ob-pie">
       <h1 class="centro" style="font-size:30px;margin-bottom:14px">Consigue el físico<br>que buscas</h1>
@@ -951,6 +1036,7 @@ function vistaOnboarding() {
     return `<div class="ob"><div class="ob-cab"></div><span class="etq">${pl.fuente === 'ia' ? 'Hecho por Claude' : 'Plan generado'}</span><h1 style="margin-top:-12px">Tu plan está listo: ${esc(pl.nombre)}</h1>
       ${pl.nota ? `<p class="sub">${esc(pl.nota)}</p>` : ''}
       <div class="tarjeta">${pl.dias.map((d, i) => `<div class="plan-dia"><h4>Día ${i + 1} · ${esc(d.nombre)}</h4>${d.ejercicios.map(x => `<div class="plan-ej"><span>${esc(EJ[x.id].n)}</span><span class="num">${x.series} × ${x.repMin}–${x.repMax}</span></div>`).join('')}</div>`).join('')}</div>
+      <p class="sub centro">¿Prefieres montarla tú? <button class="enlace" data-a="ob-blanco">Hacer mi propia rutina</button></p>
       ${seguir('Empezar')}</div>`;
   }
   return '';
@@ -1013,11 +1099,11 @@ function vistaInicio() {
       <h2>${esc(d.nombre)}</h2>
       <div class="hoy-figs">${figura('F', musDia)}${figura('B', musDia)}</div>
       <div class="metas"><span class="chip">${d.ejercicios.length} ejercicios</span><span class="chip">${d.ejercicios.reduce((a, x) => a + x.series, 0)} series</span><span class="chip">~${minutos} min</span></div>
-      ${S.activo ? `<button class="btn btn-blanco" data-a="abrir-entreno">Seguir el entreno</button>` : `<button class="btn btn-blanco" data-a="empezar" data-d="${prox}">Empezar entreno</button>`}
+      ${S.activo ? `<button class="btn btn-blanco" data-a="abrir-entreno">Seguir el entreno</button>` : d.ejercicios.length ? `<button class="btn btn-blanco" data-a="empezar" data-d="${prox}">Empezar entreno</button>` : `<p class="sub">Este día aún no tiene ejercicios.</p><button class="btn btn-blanco" data-a="ir-rutina">Añadir ejercicios</button>`}
     </div>
     ${IA ? `<button class="tarjeta" data-a="chat" style="flex-direction:row;align-items:center;text-align:left"><span class="mini" style="color:var(--acc)">${I.bocadillo.replace('<svg', '<svg width="22" height="22"')}</span><span class="crece"><b>Pregunta a tu entrenador</b><br><span class="sub">Claude conoce tu plan y tus últimos entrenos</span></span><span class="flecha">${I.derecha}</span></button>` : ''}
     <div class="datos3"><div class="dato"><b class="num">${S.entrenos.length}</b><span>entrenos</span></div><div class="dato"><b class="num">${semanasSeguidas}</b><span>semanas seguidas</span></div><div class="dato"><b class="num">${fmtMiles(S.entrenos.filter(e => e.fecha >= lun).reduce((a, e) => a + volumen(e), 0))}</b><span>kg esta semana</span></div></div>
-    <section><div class="etq" style="margin-bottom:6px">Tu plan · ${esc(S.plan.nombre)}</div><div class="lista">${S.plan.dias.map((dd, i) => {
+    <section><div class="fila entre" style="margin-bottom:6px"><span class="etq">Tu rutina · ${esc(S.plan.nombre)}</span><button class="enlace" data-a="ir-rutina" style="font-size:13px">Editar</button></div><div class="lista">${S.plan.dias.map((dd, i) => {
     const m = {}; dd.ejercicios.forEach(x => m[EJ[x.id].m] = 'var(--acc)');
     const lado = dd.ejercicios.filter(x => LADO[EJ[x.id].m] === 'B').length > dd.ejercicios.length / 2 ? 'B' : 'F';
     return `<button class="lista-item" data-a="empezar" data-d="${i}" ${S.activo ? 'disabled' : ''}><span class="mini">${figura(lado, m)}</span><span class="crece"><span class="t">${esc(dd.nombre)}</span><br><span class="d">${[...new Set(dd.ejercicios.map(x => MUSC[EJ[x.id].m]))].slice(0, 4).join(' · ')}</span></span><span class="flecha">${i === prox ? '<span class="pill">Toca hoy</span>' : I.derecha}</span></button>`;
@@ -1076,7 +1162,8 @@ setInterval(() => {
 function finalizar(descartar) {
   const a = S.activo;
   const antes = rangosMusculo();
-  const ejercicios = a.ejercicios.map(x => ({ id: x.id, nota: x.nota, series: x.series.filter(s => s.hecho && num(s.reps) > 0).map(s => ({ kg: num(s.kg) || 0, reps: Math.round(num(s.reps) || 0), hecho: true })) })).filter(x => x.series.length);
+  const def = id => { const e = EJ[id]; return e?.propio && !e.fantasma ? { def: { n: e.n, m: e.m, s: e.s, eq: e.eq, t: e.t } } : {}; };
+  const ejercicios = a.ejercicios.map(x => ({ id: x.id, ...def(x.id), nota: x.nota, series: x.series.filter(s => s.hecho && num(s.reps) > 0).map(s => ({ kg: num(s.kg) || 0, reps: Math.round(num(s.reps) || 0), hecho: true })) })).filter(x => x.series.length);
   S.activo = null; entrenoAbierto = false;
   if (descartar || !ejercicios.length) { guardar(); pintar(); toast('Entreno descartado'); return; }
   const mejAntes = mejoresPorEjercicio();
@@ -1114,10 +1201,10 @@ function vistaRangos() {
 }
 function hojaMusculo(m) {
   const r = rangosMusculo()[m];
-  const otros = BIB.filter(b => b[2] === m && disponible(EJ[b[0]], S.perfil.equipo) && !r?.ej.some(y => y.id === b[0])).slice(0, 4);
+  const otros = visibles().filter(e => e.m === m && disponible(e, S.perfil.equipo) && !r?.ej.some(y => y.id === e.id)).slice(0, 4);
   hoja(`<div class="fila">${emblema(r?.t ?? null, 'width="56" height="64"')}<div><h3>${MUSC[m]}</h3><span class="pill" style="color:${r ? colorRango(r.t) : 'var(--muted)'}">${nombreRango(r?.t)}</span></div></div>
     ${r ? `<div class="lista">${r.ej.map(y => { const t = tDe(y.p); return `<div class="lista-item"><span class="crece"><span class="t">${esc(EJ[y.id].n)}</span><br><span class="d num">Mejor: ${y.kg ? fmt(y.kg, 2) + ' kg × ' : ''}${y.reps} · ${fechaCorta(y.fecha)}</span><br><span class="d">Para ${nombreRango(Math.min(20.999, Math.floor(t) + 1))}: <b style="color:var(--fg)">${paraSubir(y.id, t)}</b></span></span><span class="pill" style="color:${colorRango(t)}">${nombreRango(t)}</span></div>`; }).join('')}</div>` : '<p class="sub">Aún no has hecho ningún ejercicio de este músculo.</p>'}
-    ${otros.length ? `<div><div class="etq" style="margin-bottom:6px">Otros ejercicios para ${MUSC[m].toLowerCase()}</div><p class="sub">${otros.map(b => b[1]).join(' · ')}</p></div>` : ''}
+    ${otros.length ? `<div><div class="etq" style="margin-bottom:6px">Otros ejercicios para ${MUSC[m].toLowerCase()}</div><p class="sub">${otros.map(e => esc(e.n)).join(' · ')}</p></div>` : ''}
     <button class="btn btn-gris" data-a="cerrar">Cerrar</button>`);
 }
 
@@ -1254,15 +1341,40 @@ function vistaPerfil() {
         <label>Duración${sel('duracion', { 45: '45 min', 60: '60 min', 75: '75 min', 90: '90 min' })}</label>
       </div></section>
     <section class="tarjeta"><b>Tu material</b><div class="chips-eq">${TODO_EQUIPO.map(id => `<button class="chip ${p.equipo.includes(id) ? 'on' : ''}" data-a="pf-eq" data-id="${id}">${eqIco(id)}${NOMBRE_EQ[id]}</button>`).join('')}</div></section>
-    <section class="tarjeta"><div class="fila entre"><b>Tu plan · ${esc(S.plan.nombre)}</b><span class="pill">${S.plan.fuente === 'ia' ? 'Hecho por Claude' : 'Plan rápido'}</span></div>
-      ${S.plan.dias.map((d, di) => `<div class="plan-dia"><h4>Día ${di + 1} · ${esc(d.nombre)}</h4>${d.ejercicios.map((x, xi) => `<button class="plan-ej" data-a="plan-ej" data-d="${di}" data-i="${xi}"><span>${esc(EJ[x.id].n)}</span><span class="num">${x.series} × ${x.repMin}–${x.repMax}</span></button>`).join('')}<button class="plan-ej" data-a="plan-add" data-d="${di}" style="color:var(--acc);font-weight:600"><span>+ Añadir ejercicio</span><span></span></button></div>`).join('')}
-      <button class="btn btn-gris" data-a="rehacer">${IA ? 'Rehacer el plan con Claude' : 'Rehacer el plan'}</button>
-      <p class="sub">Rehacerlo usa tus datos y tu material de arriba. Tu historial no se toca.</p>
+    <section class="tarjeta" id="rutina"><div class="fila entre"><button class="fila" data-a="plan-nombre" style="gap:8px;text-align:left"><b>Tu rutina · ${esc(S.plan.nombre)}</b><span class="flecha">${I.lapiz.replace('<svg', '<svg width="16" height="16"')}</span></button><span class="pill">${{ ia: 'Hecha por Claude', propia: 'Hecha por ti' }[S.plan.fuente] || 'Plan rápido'}</span></div>
+      <p class="sub">Toca un ejercicio para cambiar series, repeticiones y descanso, moverlo o quitarlo. Con «Editar» cambias el nombre del día, su orden o lo borras.</p>
+      ${S.plan.dias.map((d, di) => `<div class="plan-dia"><div class="fila entre"><h4>Día ${di + 1} · ${esc(d.nombre)}</h4><button class="chip" data-a="dia-editar" data-d="${di}" style="height:30px">${I.lapiz}Editar</button></div>${d.ejercicios.map((x, xi) => `<button class="plan-ej" data-a="plan-ej" data-d="${di}" data-i="${xi}"><span>${esc(EJ[x.id].n)}</span><span class="num">${x.series} × ${x.repMin}–${x.repMax}</span></button>`).join('') || '<p class="sub" style="padding:6px 0">Aún sin ejercicios.</p>'}<button class="plan-ej" data-a="plan-add" data-d="${di}" style="color:var(--acc);font-weight:600"><span>+ Añadir ejercicio</span><span></span></button></div>`).join('')}
+      ${S.plan.dias.length < MAX_DIAS ? `<button class="btn btn-gris" data-a="dia-nuevo">${I.mas.replace('<svg', '<svg width="18" height="18"')}Añadir un día</button>` : ''}
+      <div class="fila"><button class="btn btn-gris" data-a="rehacer">${IA ? 'Rehacer con Claude' : 'Rehacer el plan'}</button><button class="btn btn-gris" data-a="blanco">Empezar en blanco</button></div>
+      <p class="sub">Rehacerla usa tus datos y tu material de arriba; en blanco la montas tú desde cero. Tu historial no se toca en ningún caso.</p>
     </section>
+    <button class="tarjeta" data-a="biblioteca" style="flex-direction:row;align-items:center;text-align:left"><span class="mini" style="color:var(--acc)">${I.lapiz.replace('<svg', '<svg width="22" height="22"')}</span><span class="crece"><b>Ejercicios</b><br><span class="sub">${visibles().length} en la lista${Object.values(EJ).some(e => e.propio && !e.oculto) ? ` · ${Object.values(EJ).filter(e => e.propio && !e.oculto).length} tuyos` : ''}. Crea los tuyos o cambia los que hay.</span></span><span class="flecha">${I.derecha}</span></button>
     <div class="estado"><i class="${nube.estado === 'nube' ? 'ok' : ''}"></i>${S.demo ? 'Datos de ejemplo: no se guardan en tu cuenta.' : nube.estado === 'nube' ? 'Guardado en tu cuenta de Claude: lo ves igual en el móvil y en el ordenador.' : nube.estado === 'conectando' ? 'Conectando con tu cuenta…' : 'Guardado solo en este navegador y este móvil. Si borras los datos del navegador, se pierde.'}</div>
     <div id="reset-zona"><button class="btn btn-gris" data-a="reset" style="color:var(--bad)">Empezar de cero</button></div>
   </div>`;
 }
+// ---------- Rutina propia: días ----------
+const MAX_DIAS = 10;
+const planEnBlanco = n => ({ nombre: 'Mi rutina', fuente: 'propia', nota: '', dias: Array.from({ length: n }, (_, i) => ({ nombre: `Día ${i + 1}`, ejercicios: [] })) });
+function hojaDia(di) {
+  const d = S.plan.dias[di], n = S.plan.dias.length;
+  hoja(`<h3>Día ${di + 1}</h3>
+    <div class="form" style="grid-template-columns:1fr"><label>Nombre del día<input type="text" id="dia-nombre" value="${esc(d.nombre)}" maxlength="40" placeholder="Por ejemplo: Pecho y tríceps"></label></div>
+    <button class="btn btn-blanco" data-a="dia-guardar" data-d="${di}">Guardar</button>
+    ${n > 1 ? `<div class="fila">${di > 0 ? `<button class="btn btn-gris" data-a="dia-mover" data-d="${di}" data-k="-1">Antes</button>` : ''}${di < n - 1 ? `<button class="btn btn-gris" data-a="dia-mover" data-d="${di}" data-k="1">Después</button>` : ''}</div>` : ''}
+    ${n < MAX_DIAS ? `<button class="btn btn-gris" data-a="dia-duplicar" data-d="${di}">Duplicar este día</button>` : ''}
+    ${n > 1 ? `<div id="dia-borrar-zona"><button class="btn btn-gris" data-a="dia-borrar" data-d="${di}" style="color:var(--bad)">Borrar este día</button></div>` : ''}
+    <button class="btn btn-gris" data-a="cerrar">Cancelar</button>`);
+}
+function hojaBlanco(n = clamp(S.perfil?.dias || 3, 1, 7)) {
+  hoja(`<h3>Rutina en blanco</h3><p class="sub">Empiezas con los días vacíos y metes tú los ejercicios que quieras. Tu rutina de ahora se sustituye; tu historial y tus rangos se quedan.</p>
+    <div class="etq">¿Cuántos días tiene?</div>
+    <div class="pildoras">${[1, 2, 3, 4, 5, 6, 7].map(k => `<button class="pildora num ${k === n ? 'on' : ''}" data-a="blanco-n" data-n="${k}">${k}</button>`).join('')}</div>
+    <p class="sub">Luego puedes añadir o quitar días cuando quieras.</p>
+    <button class="btn btn-blanco" data-a="blanco-si" data-n="${n}">Empezar en blanco</button><button class="btn btn-gris" data-a="cerrar">Cancelar</button>`);
+}
+function irARutina() { vista = 'perfil'; try { localStorage.setItem(LS + '-vista', vista); } catch (e) { } pintar(); $('#rutina')?.scrollIntoView({ block: 'start' }); }
+
 function hojaPlanEj(di, xi) {
   const x = S.plan.dias[di].ejercicios[xi], ex = EJ[x.id];
   hoja(`<div class="fila"><span class="mini">${figura(LADO[ex.m], coloresEjercicio(ex))}</span><div><h3>${esc(ex.n)}</h3><span class="sub">${MUSC[ex.m]}</span></div></div>
@@ -1274,6 +1386,7 @@ function hojaPlanEj(di, xi) {
     </div>
     <div class="fila">${xi > 0 ? `<button class="btn btn-gris" data-a="plan-mover" data-d="${di}" data-i="${xi}" data-k="-1">Subir</button>` : ''}${xi < S.plan.dias[di].ejercicios.length - 1 ? `<button class="btn btn-gris" data-a="plan-mover" data-d="${di}" data-i="${xi}" data-k="1">Bajar</button>` : ''}</div>
     <button class="btn btn-gris" data-a="plan-cambiar" data-d="${di}" data-i="${xi}">Cambiar por otro</button>
+    <button class="btn btn-gris" data-a="ej-editar-suelto" data-id="${x.id}">Editar el ejercicio (nombre, músculo…)</button>
     <button class="btn btn-gris" data-a="plan-quitar" data-d="${di}" data-i="${xi}" style="color:var(--bad)">Quitar del día</button>
     <button class="btn btn-blanco" data-a="plan-guardar" data-d="${di}" data-i="${xi}">Guardar</button>`);
 }
@@ -1282,15 +1395,98 @@ function hojaPlanEj(di, xi) {
 let filtroM = 'todos', busq = '';
 function hojaSelector(modo, ctx) {
   // modo: 'anadir' (al entreno), 'cambiar' (en el entreno), 'plan-add', 'plan-cambiar'
+  // modo 'biblioteca': solo mirar y editar (desde Perfil)
   const base = modo === 'cambiar' || modo === 'plan-cambiar' ? EJ[ctx.id].m : null;
-  const lista = BIB.filter(b => (filtroM === 'todos' || b[2] === filtroM) && (!busq || b[1].toLowerCase().includes(busq.toLowerCase())) && b[0] !== ctx?.id);
-  const ok = id => disponible(EJ[id], S.perfil.equipo);
-  hoja(`<h3>${base ? 'Cambiar por…' : 'Añadir ejercicio'}</h3>
-    ${base ? '' : `<input type="search" id="busca-ej" placeholder="Buscar ejercicio" value="${esc(busq)}" data-busca="${modo}">`}
+  const lista = visibles().filter(e => (filtroM === 'todos' || e.m === filtroM) && sinTildes(busq).split(/\s+/).every(pal => sinTildes(e.n).includes(pal)) && e.id !== ctx?.id);
+  const ok = e => disponible(e, S.perfil.equipo);
+  const titulo = modo === 'biblioteca' ? 'Ejercicios' : base ? 'Cambiar por…' : 'Añadir ejercicio';
+  const ocultos = modo === 'biblioteca' ? Object.values(EJ).filter(e => e.oculto) : [];
+  hoja(`<div class="fila entre"><h3>${titulo}</h3><button class="chip" data-a="ej-nuevo" data-modo="${modo}" style="color:var(--acc)">${I.mas}Crear</button></div>
+    ${modo === 'biblioteca' ? '<p class="sub">Toca uno para cambiarle el nombre, el músculo, el material o cómo se apunta el peso. Con «Crear» haces uno tuyo.</p>' : ''}
+    <input type="search" id="busca-ej" placeholder="Buscar ejercicio" value="${esc(busq)}" data-busca="${modo}">
     <div class="filtros">${['todos', ...Object.keys(MUSC)].map(m => `<button class="chip ${filtroM === m ? 'on' : ''}" data-a="filtro" data-m="${m}" data-modo="${modo}">${m === 'todos' ? 'Todos' : MUSC[m]}</button>`).join('')}</div>
-    <div class="lista">${lista.sort((a, b) => ok(b[0]) - ok(a[0])).map(b => `<button class="lista-item" data-a="elegir-ej" data-id="${b[0]}" data-modo="${modo}" style="${ok(b[0]) ? '' : 'opacity:.5'}"><span class="mini">${figura(LADO[b[2]], coloresEjercicio(EJ[b[0]]))}</span><span class="crece"><span class="t">${esc(b[1])}</span><br><span class="d">${MUSC[b[2]]}${b[4].length ? ' · ' + b[4].map(e => NOMBRE_EQ[e]).join(', ') : ' · sin material'}${ok(b[0]) ? '' : ' · no tienes este material'}</span></span></button>`).join('') || '<p class="vacio">No hay ejercicios con ese nombre.</p>'}</div>
+    <div class="lista">${lista.sort((a, b) => ok(b) - ok(a) || !!b.propio - !!a.propio).map(e => `<button class="lista-item" data-a="${modo === 'biblioteca' ? 'ej-editar' : 'elegir-ej'}" data-id="${e.id}" data-modo="${modo}" style="${ok(e) ? '' : 'opacity:.5'}"><span class="mini">${figura(LADO[e.m], coloresEjercicio(e))}</span><span class="crece"><span class="t">${esc(e.n)}</span>${e.propio ? ' <span class="pill" style="font-size:10.5px;padding:3px 8px">Tuyo</span>' : e.cambiado ? ' <span class="pill" style="font-size:10.5px;padding:3px 8px">Cambiado</span>' : ''}<br><span class="d">${MUSC[e.m]}${e.eq.length ? ' · ' + e.eq.map(x => NOMBRE_EQ[x]).join(', ') : ' · sin material'}${ok(e) ? '' : ' · no tienes este material'}</span></span>${modo === 'biblioteca' ? `<span class="flecha">${I.lapiz.replace('<svg', '<svg width="18" height="18"')}</span>` : ''}</button>`).join('') || `<p class="vacio">No hay ningún ejercicio así.${busq ? ` <button class="enlace" data-a="ej-nuevo" data-modo="${modo}">Crear «${esc(busq)}»</button>` : ''}</p>`}</div>
+    ${ocultos.length ? `<div><div class="etq" style="margin:6px 0">Ocultos</div><div class="lista">${ocultos.map(e => `<div class="lista-item"><span class="crece"><span class="t" style="color:var(--muted)">${esc(e.n)}</span><br><span class="d">${MUSC[e.m]}${e.propio ? ' · tuyo, sigue en tu historial' : ''}</span></span><button class="chip" data-a="ej-mostrar" data-id="${e.id}">Mostrar</button></div>`).join('')}</div></div>` : ''}
     <button class="btn btn-gris" data-a="cerrar">Cerrar</button>`);
   hojaSelector.ctx = { modo, ...ctx };
+}
+
+// ---------- Crear y editar ejercicios ----------
+// borradorEj guarda lo que se va escribiendo, para que tocar un chip (que repinta la hoja) no lo pierda.
+let borradorEj = null;
+function hojaEjercicio(id, volver) {
+  if (!borradorEj || borradorEj.id !== id) {
+    const e = id ? EJ[id] : null;
+    borradorEj = e ? { id, n: e.n, m: e.m, s: [...e.s], eq: [...e.eq], t: e.t, tip: e.tip || '', volver }
+      : { id: null, n: busq.trim().slice(0, 60), m: filtroM !== 'todos' ? filtroM : 'pecho', s: [], eq: [], t: 'q', tip: '', volver };
+  }
+  const b = borradorEj, e = id ? EJ[id] : null;
+  const chips = (lista, sel, a) => `<div class="chips-eq">${lista.map(([k, n, ico]) => `<button class="chip ${sel.includes(k) ? 'on' : ''}" data-a="${a}" data-id="${k}">${ico || ''}${n}</button>`).join('')}</div>`;
+  hoja(`<div class="fila"><span class="mini">${figura(LADO[b.m], coloresEjercicio(b))}</span><div class="crece"><h3>${e ? 'Editar ejercicio' : 'Ejercicio nuevo'}</h3>${e && !e.propio ? `<span class="sub">De la biblioteca${e.cambiado ? ' · cambiado por ti' : ''}</span>` : ''}</div></div>
+    <div class="form" style="grid-template-columns:1fr">
+      <label>Nombre<input type="text" id="ej-n" data-ej="n" value="${esc(b.n)}" maxlength="60" placeholder="Por ejemplo: Press en máquina convergente"></label>
+      <label>Músculo principal<select id="ej-m" data-ej="m">${Object.entries(MUSC).map(([k, n]) => `<option value="${k}" ${b.m === k ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
+      <label>Cómo apuntas el peso<select id="ej-t" data-ej="t">${Object.entries(TIPOS).map(([k, n]) => `<option value="${k}" ${b.t === k ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
+    </div>
+    <div><div class="etq" style="margin-bottom:8px">También trabaja</div>${chips(Object.entries(MUSC).filter(([k]) => k !== b.m), b.s, 'ej-sec')}</div>
+    <div><div class="etq" style="margin-bottom:8px">Material que necesita</div>${chips(TODO_EQUIPO.map(k => [k, NOMBRE_EQ[k], eqIco(k)]), b.eq, 'ej-eq')}<p class="sub" style="margin-top:6px">${b.eq.length ? '' : 'Sin material: sale siempre, tengas lo que tengas.'}</p></div>
+    <label class="form" style="grid-template-columns:1fr"><span style="font-size:12px;color:var(--muted);font-weight:600">Cómo se hace (opcional)</span><textarea id="ej-tip" data-ej="tip" maxlength="300" placeholder="Ajustes de la máquina, agarre, en qué fijarte…">${esc(b.tip)}</textarea></label>
+    <button class="btn btn-blanco" data-a="ej-guardar">${e ? 'Guardar cambios' : b.volver?.modo && b.volver.modo !== 'biblioteca' ? 'Crear y añadir' : 'Crear ejercicio'}</button>
+    ${e && e.cambiado ? `<button class="btn btn-gris" data-a="ej-original">Volver a como venía</button>` : ''}
+    ${e ? `<div id="ej-quitar-zona"><button class="btn btn-gris" data-a="ej-quitar" style="color:var(--bad)">${e.propio ? 'Borrar este ejercicio' : 'Ocultar de la lista'}</button></div>` : ''}
+    <button class="btn btn-gris" data-a="ej-volver">${b.volver ? 'Volver' : 'Cerrar'}</button>`);
+}
+function guardarEjercicio() {
+  const b = borradorEj; b.n = b.n.trim();
+  if (!b.n) { toast('Ponle un nombre'); $('#ej-n')?.focus(); return; }
+  if (visibles().some(e => e.id !== b.id && sinTildes(e.n) === sinTildes(b.n))) { toast('Ya hay un ejercicio con ese nombre'); return; }
+  S.ejercicios ||= {};
+  const datos = { n: b.n, m: b.m, s: b.s.filter(x => x !== b.m), eq: b.eq, t: b.t, tip: b.tip.trim() };
+  let id = b.id;
+  if (!id) { id = 'p_' + nuevoId(); S.ejercicios[id] = { propio: true, ...datos }; }
+  else if (S.ejercicios[id]?.propio) S.ejercicios[id] = { ...S.ejercicios[id], ...datos };
+  else {
+    // De la biblioteca: se guarda solo lo que cambia
+    const [, n, m, s, eq, t, , tip] = BIB.find(x => x[0] === id), orig = { n, m, s, eq, t, tip }, cambio = {};
+    for (const k in datos) if (JSON.stringify(datos[k]) !== JSON.stringify(orig[k])) cambio[k] = datos[k];
+    const oculto = S.ejercicios[id]?.oculto;
+    if (Object.keys(cambio).length || oculto) S.ejercicios[id] = { ...cambio, ...(oculto ? { oculto } : {}) }; else delete S.ejercicios[id];
+  }
+  rehacerEJ(); guardar();
+  const volver = b.volver; borradorEj = null;
+  if (!b.id && volver && volver.modo !== 'biblioteca') { elegirEj(volver, id); toast('Ejercicio creado y añadido'); return; }
+  toast(b.id ? 'Ejercicio guardado' : 'Ejercicio creado');
+  if (volver) { busq = ''; hojaSelector(volver.modo, volver); } else cerrarHoja();
+  pintar();
+}
+// Dónde se usa un ejercicio: días de la rutina y entreno en curso (el historial no cuenta: allí se queda)
+function usosEjercicio(id) {
+  const dias = (S.plan?.dias || []).map((d, i) => d.ejercicios.some(x => x.id === id) ? `día ${i + 1} (${d.nombre})` : null).filter(Boolean);
+  if (S.activo?.ejercicios.some(x => x.id === id)) dias.push('el entreno en curso');
+  return dias;
+}
+function quitarEjercicio(id) {
+  const e = EJ[id], usos = usosEjercicio(id);
+  if (usos.length) { toast(`Está en ${usos.join(', ')}: quítalo de ahí primero`); return false; }
+  const enHistorial = S.entrenos.some(x => x.ejercicios.some(y => y.id === id));
+  if (e.propio && !enHistorial) delete S.ejercicios[id]; // nunca se usó: fuera del todo
+  else S.ejercicios[id] = { ...(S.ejercicios[id] || {}), oculto: true };
+  rehacerEJ(); guardar(); return true;
+}
+function elegirEj(c, id) {
+  if (c.modo === 'anadir') { S.activo.ejercicios.push({ id, obj: { repMin: 8, repMax: 12 }, descanso: 90, nota: '', series: Array.from({ length: 3 }, () => ({ kg: '', reps: '', hecho: false })) }); S.activo.idx = S.activo.ejercicios.length - 1; }
+  if (c.modo === 'cambiar') {
+    const x = ejActual(), vacia = () => ({ kg: '', reps: '', hecho: false });
+    if (x.series.some(s => s.hecho)) { // lo hecho se queda en el ejercicio de antes; el nuevo va detrás con las series que faltaban
+      const faltan = x.series.filter(s => !s.hecho).length || 1;
+      x.series = x.series.filter(s => s.hecho);
+      S.activo.ejercicios.splice(S.activo.idx + 1, 0, { id, obj: { ...x.obj }, descanso: x.descanso, nota: '', series: Array.from({ length: faltan }, vacia) });
+      S.activo.idx++;
+    } else { x.id = id; x.series = x.series.map(vacia); }
+  }
+  if (c.modo === 'plan-add') S.plan.dias[c.d].ejercicios.push({ id, series: 3, repMin: 8, repMax: 12, descanso: 90 });
+  if (c.modo === 'plan-cambiar') S.plan.dias[c.d].ejercicios[c.i].id = id;
+  guardar(); cerrarHoja(); pintar();
 }
 
 // ---------- Entrenador (chat) ----------
@@ -1424,7 +1620,8 @@ document.addEventListener('click', async e => {
     case 't-descanso': { const x = ejActual(), op = [45, 60, 90, 120, 180]; x.descanso = op[(op.indexOf(x.descanso) + 1) % op.length] || 90; guardar(); break; }
     case 'rest': S.activo.descansoFin = Math.max(Date.now() + 1000, S.activo.descansoFin + +d.d * 1000); S.activo.descansoTotal = Math.max(S.activo.descansoTotal + +d.d, 1); guardar(); return;
     case 'rest-saltar': S.activo.descansoFin = null; guardar(); break;
-    case 'tutorial': { const ex = EJ[ejActual().id]; hoja(`<h3>${esc(ex.n)}</h3><div class="e-fig" style="height:220px">${figura(LADO[ex.m], coloresEjercicio(ex))}</div><p><b>Músculo principal:</b> ${MUSC[ex.m]}${ex.s.length ? `<br><b>También trabaja:</b> ${ex.s.map(m => MUSC[m]).join(', ')}` : ''}<br><b>Material:</b> ${ex.eq.length ? ex.eq.map(x => NOMBRE_EQ[x]).join(', ') : 'ninguno'}</p><p>${esc(ex.tip)}</p><a class="btn btn-blanco" style="text-decoration:none" href="https://www.youtube.com/results?search_query=${encodeURIComponent('cómo hacer ' + ex.n + ' técnica')}" target="_blank" rel="noopener">${I.play}Ver vídeos en YouTube</a><button class="btn btn-gris" data-a="cerrar">Cerrar</button>`); return; }
+    case 'tutorial': { const ex = EJ[ejActual().id]; hoja(`<h3>${esc(ex.n)}</h3><div class="e-fig" style="height:220px">${figura(LADO[ex.m], coloresEjercicio(ex))}</div><p><b>Músculo principal:</b> ${MUSC[ex.m]}${ex.s.length ? `<br><b>También trabaja:</b> ${ex.s.map(m => MUSC[m]).join(', ')}` : ''}<br><b>Material:</b> ${ex.eq.length ? ex.eq.map(x => NOMBRE_EQ[x]).join(', ') : 'ninguno'}</p><p>${esc(ex.tip)}</p><a class="btn btn-blanco" style="text-decoration:none" href="https://www.youtube.com/results?search_query=${encodeURIComponent('cómo hacer ' + ex.n + ' técnica')}" target="_blank" rel="noopener">${I.play}Ver vídeos en YouTube</a><button class="btn btn-gris" data-a="ej-editar-suelto" data-id="${ex.id}">${I.lapiz.replace('<svg', '<svg width="18" height="18"')}Editar este ejercicio</button><button class="btn btn-gris" data-a="cerrar">Cerrar</button>`); return; }
+    case 'ej-editar-suelto': borradorEj = null; hojaEjercicio(d.id, null); return;
     case 'cambiar': busq = ''; filtroM = EJ[ejActual().id].m; hojaSelector('cambiar', { id: ejActual().id }); return;
     case 'anadir-ej': busq = ''; filtroM = 'todos'; hojaSelector('anadir', {}); return;
     case 'notas': { const x = ejActual(); hoja(`<h3>Notas</h3><p class="sub">${esc(EJ[x.id].n)}: ajuste del asiento, agarre, sensaciones…</p><textarea id="nota-texto" placeholder="Por ejemplo: asiento en el 4, agarre ancho">${esc(x.nota)}</textarea><button class="btn btn-blanco" data-a="nota-guardar">Guardar nota</button>`); return; }
@@ -1457,26 +1654,42 @@ document.addEventListener('click', async e => {
       guardar(); cerrarHoja(); break;
     }
     case 'plan-mover': { const l = S.plan.dias[+d.d].ejercicios, i = +d.i, j = i + +d.k;[l[i], l[j]] = [l[j], l[i]]; guardar(); cerrarHoja(); break; }
-    case 'plan-quitar': if (S.plan.dias[+d.d].ejercicios.length < 2) { toast('Un día necesita al menos un ejercicio: cámbialo por otro'); return; } S.plan.dias[+d.d].ejercicios.splice(+d.i, 1); guardar(); cerrarHoja(); break;
+    case 'plan-quitar': S.plan.dias[+d.d].ejercicios.splice(+d.i, 1); guardar(); cerrarHoja(); break;
     case 'plan-cambiar': busq = ''; filtroM = EJ[S.plan.dias[+d.d].ejercicios[+d.i].id].m; hojaSelector('plan-cambiar', { id: S.plan.dias[+d.d].ejercicios[+d.i].id, d: +d.d, i: +d.i }); return;
     case 'plan-add': busq = ''; filtroM = 'todos'; hojaSelector('plan-add', { d: +d.d }); return;
     case 'filtro': filtroM = d.m; hojaSelector(d.modo, hojaSelector.ctx); return;
-    case 'elegir-ej': {
-      const c = hojaSelector.ctx, id = d.id;
-      if (c.modo === 'anadir') { S.activo.ejercicios.push({ id, obj: { repMin: 8, repMax: 12 }, descanso: 90, nota: '', series: Array.from({ length: 3 }, () => ({ kg: '', reps: '', hecho: false })) }); S.activo.idx = S.activo.ejercicios.length - 1; }
-      if (c.modo === 'cambiar') {
-        const x = ejActual(), vacia = () => ({ kg: '', reps: '', hecho: false });
-        if (x.series.some(s => s.hecho)) { // lo hecho se queda en el ejercicio de antes; el nuevo va detrás con las series que faltaban
-          const faltan = x.series.filter(s => !s.hecho).length || 1;
-          x.series = x.series.filter(s => s.hecho);
-          S.activo.ejercicios.splice(S.activo.idx + 1, 0, { id, obj: { ...x.obj }, descanso: x.descanso, nota: '', series: Array.from({ length: faltan }, vacia) });
-          S.activo.idx++;
-        } else { x.id = id; x.series = x.series.map(vacia); }
-      }
-      if (c.modo === 'plan-add') S.plan.dias[c.d].ejercicios.push({ id, series: 3, repMin: 8, repMax: 12, descanso: 90 });
-      if (c.modo === 'plan-cambiar') S.plan.dias[c.d].ejercicios[c.i].id = id;
-      guardar(); cerrarHoja(); break;
+    case 'elegir-ej': elegirEj(hojaSelector.ctx, d.id); return;
+    // Ejercicios: crear, editar, ocultar
+    case 'biblioteca': busq = ''; filtroM = 'todos'; borradorEj = null; hojaSelector('biblioteca', {}); return;
+    case 'ej-nuevo': borradorEj = null; hojaEjercicio(null, hojaSelector.ctx); return;
+    case 'ej-editar': borradorEj = null; hojaEjercicio(d.id, hojaSelector.ctx); return;
+    case 'ej-sec': case 'ej-eq': { const l = borradorEj[a === 'ej-sec' ? 's' : 'eq'], i = l.indexOf(d.id); i >= 0 ? l.splice(i, 1) : l.push(d.id); hojaEjercicio(borradorEj.id, borradorEj.volver); return; }
+    case 'ej-guardar': guardarEjercicio(); return;
+    case 'ej-original': { const id = borradorEj.id, v = borradorEj.volver, oculto = S.ejercicios?.[id]?.oculto; if (oculto) S.ejercicios[id] = { oculto }; else delete S.ejercicios[id]; borradorEj = null; rehacerEJ(); guardar(); toast('Ejercicio como venía'); hojaEjercicio(id, v); pintar(); return; }
+    case 'ej-quitar': {
+      const e = EJ[borradorEj.id], usos = usosEjercicio(e.id);
+      if (usos.length) { toast(`Está en ${usos.join(', ')}: quítalo de ahí primero`); return; }
+      $('#ej-quitar-zona').innerHTML = `<p class="sub">${e.propio ? 'Se borra de la lista. Si ya lo has hecho alguna vez, sigue en tu historial.' : 'Deja de salir en las listas. Puedes volver a mostrarlo desde «Ejercicios».'}</p><div class="fila" style="margin-top:8px"><button class="btn btn-gris" data-a="ej-volver">No</button><button class="btn btn-blanco" data-a="ej-quitar-si" style="background:var(--bad);color:#fff">${e.propio ? 'Sí, borrar' : 'Sí, ocultar'}</button></div>`;
+      return;
     }
+    case 'ej-quitar-si': { const b = borradorEj; if (quitarEjercicio(b.id)) { borradorEj = null; toast(EJ[b.id]?.oculto ? 'Ejercicio oculto' : 'Ejercicio borrado'); if (b.volver) hojaSelector(b.volver.modo, b.volver); else cerrarHoja(); pintar(); } return; }
+    case 'ej-volver': { const v = borradorEj?.volver; borradorEj = null; if (v) hojaSelector(v.modo, v); else cerrarHoja(); return; }
+    case 'ej-mostrar': { const c = S.ejercicios?.[d.id]; if (c) { delete c.oculto; if (!c.propio && !Object.keys(c).length) delete S.ejercicios[d.id]; } rehacerEJ(); guardar(); hojaSelector('biblioteca', hojaSelector.ctx); pintar(); return; }
+    // Rutina propia
+    case 'ir-rutina': irARutina(); return;
+    case 'plan-nombre': hoja(`<h3>Nombre de tu rutina</h3><div class="form" style="grid-template-columns:1fr"><label>Nombre<input type="text" id="plan-nombre" value="${esc(S.plan.nombre)}" maxlength="60"></label></div><button class="btn btn-blanco" data-a="plan-nombre-si">Guardar</button><button class="btn btn-gris" data-a="cerrar">Cancelar</button>`); return;
+    case 'plan-nombre-si': S.plan.nombre = $('#plan-nombre').value.trim().slice(0, 60) || S.plan.nombre; guardar(); cerrarHoja(); break;
+    case 'dia-editar': hojaDia(+d.d); return;
+    case 'dia-guardar': { const n = $('#dia-nombre').value.trim().slice(0, 40); if (!n) { toast('Ponle un nombre al día'); return; } S.plan.dias[+d.d].nombre = n; guardar(); cerrarHoja(); break; }
+    case 'dia-mover': { const l = S.plan.dias, i = +d.d, j = i + +d.k;[l[i], l[j]] = [l[j], l[i]]; guardar(); cerrarHoja(); break; }
+    case 'dia-duplicar': { if (S.plan.dias.length >= MAX_DIAS) return; const o = S.plan.dias[+d.d]; S.plan.dias.splice(+d.d + 1, 0, { nombre: (o.nombre + ' (copia)').slice(0, 40), ejercicios: o.ejercicios.map(x => ({ ...x })) }); guardar(); cerrarHoja(); toast('Día duplicado'); break; }
+    case 'dia-borrar': $('#dia-borrar-zona').innerHTML = `<p class="sub">¿Borrar «${esc(S.plan.dias[+d.d].nombre)}» de tu rutina? Los entrenos que ya hiciste se quedan.</p><div class="fila" style="margin-top:8px"><button class="btn btn-gris" data-a="cerrar">No</button><button class="btn btn-blanco" data-a="dia-borrar-si" data-d="${d.d}" style="background:var(--bad);color:#fff">Sí, borrar</button></div>`; return;
+    case 'dia-borrar-si': { if (S.plan.dias.length < 2) return; const i = +d.d; S.plan.dias.splice(i, 1); guardar(); cerrarHoja(); toast('Día borrado'); break; }
+    case 'dia-nuevo': { if (S.plan.dias.length >= MAX_DIAS) return; S.plan.dias.push({ nombre: `Día ${S.plan.dias.length + 1}`, ejercicios: [] }); guardar(); pintar(); hojaDia(S.plan.dias.length - 1); return; }
+    case 'blanco': hojaBlanco(); return;
+    case 'blanco-n': hojaBlanco(+d.n); return;
+    case 'blanco-si': S.plan = planEnBlanco(clamp(+d.n || 3, 1, 7)); guardar(); cerrarHoja(); irARutina(); toast('Ahora añade los ejercicios de cada día'); return;
+    case 'ob-blanco': S.ob.planNuevo = planEnBlanco(clamp(borradorPerfil().dias, 1, 7)); terminarOnboarding(); irARutina(); toast('Añade los ejercicios de cada día'); return;
     case 'rehacer': {
       hoja(`<h3>Rehacer el plan</h3><p class="sub">${IA ? 'Claude monta un plan nuevo' : 'Se monta un plan nuevo'} con tus datos y tu material. El actual se sustituye; tu historial y tus rangos se quedan.</p><p class="sub" id="rehacer-estado" role="status"></p><button class="btn btn-blanco" data-a="rehacer-si">Rehacer</button><button class="btn btn-gris" data-a="cerrar">Cancelar</button>`);
       return;
@@ -1505,6 +1718,12 @@ document.addEventListener('input', e => {
   const t = e.target;
   if (t.dataset.in && S.activo) { const s = ejActual().series[+t.dataset.s]; s[t.dataset.in] = t.value; guardar(); return; }
   if (t.dataset.ob) { const v = num(t.value), [lo, hi] = LIM[t.dataset.ob]; if (v != null && v >= lo && v <= hi) borradorPerfil()[t.dataset.ob] = v; return; }
+  if (t.dataset.ej && borradorEj) {
+    const k = t.dataset.ej; borradorEj[k] = t.value;
+    if (k === 'm') borradorEj.s = borradorEj.s.filter(x => x !== t.value);
+    if (t.tagName === 'SELECT') hojaEjercicio(borradorEj.id, borradorEj.volver);
+    return;
+  }
   if (t.dataset.busca != null) { busq = t.value; const pos = t.selectionStart; hojaSelector(t.dataset.busca, hojaSelector.ctx); const n = $('#busca-ej'); n.focus(); n.setSelectionRange(pos, pos); }
 });
 document.addEventListener('change', async e => {
